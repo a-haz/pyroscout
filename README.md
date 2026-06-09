@@ -28,6 +28,11 @@ plan → navigate → arrive** — all autonomously, and without ever touching a
 > **Right:** the occupancy-grid map the robot *infers* from LIDAR, with its
 > live plan drawn on top. Watch the right panel fill in as the robot explores.
 
+📓 **Prefer a narrated walk-through?** Read
+[`notebooks/pyroscout_writeup.ipynb`](notebooks/pyroscout_writeup.ipynb) — a
+blog-style article that builds the whole system, layer by layer, with runnable
+code and inline figures.
+
 ---
 
 ## 📊 Results
