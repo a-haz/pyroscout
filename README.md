@@ -1,6 +1,6 @@
 # 🔥🤖 PyroScout — Thermal-LIDAR Fusion for Autonomous Search-and-Rescue
 
-[![CI](https://github.com/a-haz/project-00/actions/workflows/ci.yml/badge.svg)](https://github.com/a-haz/project-00/actions/workflows/ci.yml)
+[![CI](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml/badge.svg)](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](tests/)
@@ -27,6 +27,11 @@ plan → navigate → arrive** — all autonomously, and without ever touching a
 > heat signature (★), and the live LIDAR fan.
 > **Right:** the occupancy-grid map the robot *infers* from LIDAR, with its
 > live plan drawn on top. Watch the right panel fill in as the robot explores.
+
+📓 **Prefer a narrated walk-through?** Read
+[`notebooks/pyroscout_writeup.ipynb`](notebooks/pyroscout_writeup.ipynb) — a
+blog-style article that builds the whole system, layer by layer, with runnable
+code and inline figures.
 
 ---
 
