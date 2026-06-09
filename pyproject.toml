@@ -42,6 +42,9 @@ include = ["pyroscout*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Notebooks under notebooks/ are narrative write-ups, not shippable code;
+# don't lint them with the library's style rules.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
