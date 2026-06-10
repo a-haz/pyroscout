@@ -11,6 +11,7 @@ but buys us two things cheaply:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -36,6 +37,12 @@ class Rectangle:
             self.x - margin <= px <= self.x + self.w + margin
             and self.y - margin <= py <= self.y + self.h + margin
         )
+
+    def distance_to(self, px: float, py: float) -> float:
+        """Euclidean distance from a point to this rectangle (0.0 if inside)."""
+        dx = max(self.x - px, 0.0, px - (self.x + self.w))
+        dy = max(self.y - py, 0.0, py - (self.y + self.h))
+        return math.hypot(dx, dy)
 
 
 @dataclass(frozen=True)
@@ -94,7 +101,12 @@ class World:
         return self._seg_cache
 
     def in_collision(self, x: float, y: float, radius: float = 0.0) -> bool:
-        """True if a disc of ``radius`` at ``(x, y)`` overlaps a wall."""
+        """True if a disc of ``radius`` at ``(x, y)`` overlaps a wall.
+
+        Uses the exact point-to-rectangle distance rather than an inflated
+        rectangle, which would falsely flag the quarter-disc voids just off
+        each corner.
+        """
         if (
             x < radius
             or x > self.width - radius
@@ -102,4 +114,4 @@ class World:
             or y > self.height - radius
         ):
             return True
-        return any(obs.contains(x, y, margin=radius) for obs in self.obstacles)
+        return any(obs.distance_to(x, y) <= radius for obs in self.obstacles)

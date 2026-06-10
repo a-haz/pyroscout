@@ -48,6 +48,50 @@ def bresenham(x0: int, y0: int, x1: int, y1: int):
     return cells
 
 
+def bresenham_batch(x0: int, y0: int, targets) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Trace Bresenham lines from one origin to many targets in lockstep.
+
+    Vectorised companion to :func:`bresenham`: rather than walking one line at
+    a time in Python, all ``B`` lines take their Bresenham steps together, so
+    the per-cell work happens inside numpy.  Row ``i`` reproduces exactly
+    ``bresenham(x0, y0, *targets[i])``.
+
+    Returns
+    -------
+    xs, ys : np.ndarray (int), shape (B, S)
+        Cell coordinates per line.  ``S`` is the longest line; rows keep
+        stepping past their own end, so only the first ``lengths[i]`` entries
+        of row ``i`` are valid.
+    lengths : np.ndarray (int), shape (B,)
+        Number of cells on each line (Chebyshev distance + 1).
+    """
+    targets = np.asarray(targets, dtype=np.int64).reshape(-1, 2)
+    x1, y1 = targets[:, 0], targets[:, 1]
+    dx = np.abs(x1 - x0)
+    dy = np.abs(y1 - y0)
+    sx = np.where(x0 < x1, 1, -1)
+    sy = np.where(y0 < y1, 1, -1)
+    lengths = np.maximum(dx, dy) + 1
+    n_steps = int(lengths.max()) if lengths.size else 0
+
+    n_rays = targets.shape[0]
+    xs = np.empty((n_rays, n_steps), dtype=np.int64)
+    ys = np.empty((n_rays, n_steps), dtype=np.int64)
+    x = np.full(n_rays, x0, dtype=np.int64)
+    y = np.full(n_rays, y0, dtype=np.int64)
+    err = dx - dy
+    for s in range(n_steps):
+        xs[:, s] = x
+        ys[:, s] = y
+        e2 = 2 * err
+        step_x = e2 > -dy
+        step_y = e2 < dx
+        err += np.where(step_x, -dy, 0) + np.where(step_y, dx, 0)
+        x += np.where(step_x, sx, 0)
+        y += np.where(step_y, sy, 0)
+    return xs, ys, lengths
+
+
 class OccupancyGrid:
     """A 2D probabilistic occupancy grid aligned with the world origin."""
 
@@ -94,27 +138,35 @@ class OccupancyGrid:
 
     # --- mapping ---------------------------------------------------------------
     def update(self, scan) -> None:
-        """Fuse one :class:`~pyroscout.sensors.lidar.LidarScan` into the map."""
+        """Fuse one :class:`~pyroscout.sensors.lidar.LidarScan` into the map.
+
+        All beams are traced at once with :func:`bresenham_batch` — this runs
+        every simulation step over thousands of cells, so it is the one mapping
+        routine that has to be vectorised.
+        """
         rx, ry = self.world_to_grid(scan.pose.x, scan.pose.y)
-        endpoints = scan.endpoints()
+        ends = np.floor_divide(scan.endpoints(), self.resolution).astype(np.int64)
         hit_mask = scan.hit_mask
 
-        for (ex, ey), hit in zip(endpoints, hit_mask, strict=True):
-            cx, cy = self.world_to_grid(ex, ey)
-            ray = bresenham(rx, ry, cx, cy)
-            # Every cell the beam crosses before the end is evidence of free space.
-            for px, py in ray[:-1]:
-                if self.in_bounds(px, py):
-                    self.log_odds[py, px] -= self.l_free
-            # The final cell is occupied only if the beam actually hit something.
-            lx, ly = ray[-1]
-            if self.in_bounds(lx, ly):
-                if hit:
-                    self.log_odds[ly, lx] += self.l_occ
-                else:
-                    self.log_odds[ly, lx] -= self.l_free
+        xs, ys, lengths = bresenham_batch(rx, ry, ends)
+
+        # Every cell a beam crosses before its end cell is evidence of free
+        # space; so is the end cell itself when the beam timed out (no hit).
+        before_end = np.arange(xs.shape[1])[None, :] < (lengths - 1)[:, None]
+        free_x = np.concatenate([xs[before_end], ends[~hit_mask, 0]])
+        free_y = np.concatenate([ys[before_end], ends[~hit_mask, 1]])
+        self.log_odds -= self.l_free * self._cell_counts(free_x, free_y)
+
+        # The end cell of a beam that struck something is occupied evidence.
+        self.log_odds += self.l_occ * self._cell_counts(ends[hit_mask, 0], ends[hit_mask, 1])
 
         np.clip(self.log_odds, -self.l_clamp, self.l_clamp, out=self.log_odds)
+
+    def _cell_counts(self, cx: np.ndarray, cy: np.ndarray) -> np.ndarray:
+        """Per-grid-cell tally of the given cells (out-of-bounds ones dropped)."""
+        ok = (cx >= 0) & (cx < self.nx) & (cy >= 0) & (cy < self.ny)
+        lin = cy[ok] * self.nx + cx[ok]
+        return np.bincount(lin, minlength=self.ny * self.nx).reshape(self.ny, self.nx)
 
     # --- planning views --------------------------------------------------------
     def costmap(self, occ_threshold: float = 0.65, inflate_radius: float = 0.0):

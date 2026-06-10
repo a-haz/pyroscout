@@ -27,6 +27,24 @@ def test_world_collision():
     assert not w.in_collision(2, 2, radius=0.2)  # open space
 
 
+def test_rectangle_distance_to():
+    r = Rectangle(1, 1, 2, 2)
+    assert r.distance_to(2, 2) == 0.0  # inside
+    assert r.distance_to(3, 2) == 0.0  # on the edge
+    assert abs(r.distance_to(4, 2) - 1.0) < 1e-12  # beside an edge
+    assert abs(r.distance_to(0, 0) - math.sqrt(2)) < 1e-12  # off a corner
+
+
+def test_world_collision_is_exact_at_corners():
+    w = World(10, 10, obstacles=[Rectangle(4, 4, 2, 2)])
+    r = 0.2
+    # Diagonally off the corner: inside the inflated *square* but the disc
+    # does not actually touch the rectangle (corner distance ~0.25 > r).
+    assert not w.in_collision(4 - 0.9 * r, 4 - 0.9 * r, radius=r)
+    # Close enough diagonally that the disc really does overlap (~0.14 < r).
+    assert w.in_collision(4 - 0.5 * r, 4 - 0.5 * r, radius=r)
+
+
 def test_heat_source_xy():
     s = HeatSource(3, 4, 50)
     assert tuple(s.xy) == (3.0, 4.0)

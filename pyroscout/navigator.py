@@ -131,6 +131,7 @@ class Navigator:
         self._steps_since_plan = 0
         self._stuck_counter = 0
         self._visited_targets: list[np.ndarray] = []
+        self._plan_ctx: tuple[np.ndarray, np.ndarray] | None = None
 
     # --- fusion ---------------------------------------------------------------
     def _update_goal_estimate(self, detections: list[ThermalDetection]) -> None:
@@ -146,15 +147,28 @@ class Navigator:
         self.victim_seen = True
 
     # --- planning helpers -----------------------------------------------------
+    def _planning_context(self) -> tuple[np.ndarray, np.ndarray]:
+        """The inflated costmap + clearance cost field for the current map.
+
+        ``_plan_to`` can run several times per replan (the victim goal plus
+        every frontier candidate), and these grid-wide products only change
+        when the map does — so they are computed once and cached until the
+        next ``grid.update``.
+        """
+        if self._plan_ctx is None:
+            blocked = self.grid.costmap(inflate_radius=self.inflate)
+            # Clearance penalty: prefer staying away from walls.
+            clearance = self.grid.clearance_m()
+            cost_grid = self.clearance_weight * np.maximum(0.0, self.comfort - clearance)
+            self._plan_ctx = (blocked, cost_grid)
+        return self._plan_ctx
+
     def _plan_to(self, goal_xy: np.ndarray) -> np.ndarray | None:
-        blocked = self.grid.costmap(inflate_radius=self.inflate)
+        blocked, cost_grid = self._planning_context()
         start = _nearest_free(blocked, self.grid.world_to_grid(self.robot.x, self.robot.y))
         goal = _nearest_free(blocked, self.grid.world_to_grid(*goal_xy))
         if start is None or goal is None:
             return None
-        # Clearance penalty: prefer staying away from walls.
-        clearance = self.grid.clearance_m()
-        cost_grid = self.clearance_weight * np.maximum(0.0, self.comfort - clearance)
         cells = astar(blocked, start, goal, cost_grid=cost_grid)
         if not cells:
             return None
@@ -255,6 +269,7 @@ class Navigator:
         # 1. Sense + map.
         scan = self.lidar.scan(pose, self.world)
         self.grid.update(scan)
+        self._plan_ctx = None  # map changed: cached planning products are stale
         detections = self.thermal.sense(pose, self.world)
         self._update_goal_estimate(detections)
 

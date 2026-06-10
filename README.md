@@ -3,7 +3,7 @@
 [![CI](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml/badge.svg)](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen.svg)](tests/)
 
 A from-scratch 2D robotics simulator in which a mobile robot is dropped into a
 building it has **never seen**, and must **find a victim** using two
@@ -190,7 +190,7 @@ python examples/run_search_rescue.py            # or --seed 3, --no-gif
 python examples/demo_lidar.py
 python examples/demo_planning.py
 
-# 4. Run the test suite (41 tests, incl. an end-to-end run)
+# 4. Run the test suite (45 tests, incl. an end-to-end run)
 pytest -q
 
 # 5. Lint
@@ -229,7 +229,7 @@ pyroscout/
 ├── viz.py                   # matplotlib rendering / GIF export
 └── scenarios.py             # the reproducible demo world
 examples/                    # runnable demos that also produce the figures
-tests/                       # 41 unit + integration tests
+tests/                       # 45 unit + integration tests
 ```
 
 ---

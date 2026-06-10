@@ -165,6 +165,7 @@ def animate(
     """Render the run to an animated GIF and return the output path."""
     idx = _frames(result, stride, max_frames)
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(9.6, 4.6))
+    dt = result.sim_time / max(result.steps, 1)
 
     def update(frame_i):
         rec = result.history[frame_i]
@@ -172,7 +173,7 @@ def animate(
         _draw_belief(axR, world, rec, robot_radius)
         fig.suptitle(
             f"PyroScout — {rec.state.value.upper()}   "
-            f"t = {frame_i * 0.1:4.1f}s   step {frame_i + 1}/{result.steps}",
+            f"t = {frame_i * dt:4.1f}s   step {frame_i + 1}/{result.steps}",
             fontsize=12, fontweight="bold",
         )
 
