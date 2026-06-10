@@ -89,6 +89,21 @@ def test_clearance_transform():
     assert clr[10, 15] > 0.4  # ~5 cells = 0.5 m away
 
 
+def test_dilate_matches_disc_reference():
+    rng = np.random.default_rng(3)
+    for r in (1, 3, 5):
+        mask = rng.random((40, 50)) < 0.05
+        fast = OccupancyGrid._dilate(mask, r)
+        slow = mask.copy()
+        h, w = mask.shape
+        for y, x in zip(*np.nonzero(mask), strict=True):
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    if dx * dx + dy * dy <= r * r and 0 <= y + dy < h and 0 <= x + dx < w:
+                        slow[y + dy, x + dx] = True
+        np.testing.assert_array_equal(fast, slow)
+
+
 def test_costmap_inflation():
     g = OccupancyGrid(2, 2, 0.1)
     g.log_odds[10, 10] = 5.0

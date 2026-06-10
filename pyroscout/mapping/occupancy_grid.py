@@ -80,15 +80,17 @@ def bresenham_batch(x0: int, y0: int, targets) -> tuple[np.ndarray, np.ndarray, 
     x = np.full(n_rays, x0, dtype=np.int64)
     y = np.full(n_rays, y0, dtype=np.int64)
     err = dx - dy
+    neg_dy = -dy
     for s in range(n_steps):
         xs[:, s] = x
         ys[:, s] = y
         e2 = 2 * err
-        step_x = e2 > -dy
+        step_x = e2 > neg_dy
         step_y = e2 < dx
-        err += np.where(step_x, -dy, 0) + np.where(step_y, dx, 0)
-        x += np.where(step_x, sx, 0)
-        y += np.where(step_y, sy, 0)
+        err -= dy * step_x
+        err += dx * step_y
+        x += sx * step_x
+        y += sy * step_y
     return xs, ys, lengths
 
 
@@ -199,6 +201,10 @@ class OccupancyGrid:
         small "comfort" radius — beyond that, all cells are equally comfortable.
         A* uses this to prefer routes through the *middle* of corridors and
         doorways instead of scraping the corners.
+
+        (A two-pass raster-sweep chamfer is ~20% faster, but its different
+        float rounding flips A* ties between equal-cost paths and changes
+        run trajectories, so the bit-reproducible fixpoint form is kept.)
         """
         blocked = self.prob > occ_threshold
         cap = float(max_cells + 1)
@@ -225,16 +231,16 @@ class OccupancyGrid:
         ys, xs = np.nonzero(mask)
         if ys.size == 0:
             return mask.copy()
-        out = mask.copy()
+        # Stamp the whole disc around every set cell in one scatter write.
+        span = np.arange(-r, r + 1)
+        oy, ox = np.meshgrid(span, span, indexing="ij")
+        disc = (oy * oy + ox * ox) <= r * r
+        ny = (ys[:, None] + oy[disc]).ravel()
+        nx = (xs[:, None] + ox[disc]).ravel()
         h, w = mask.shape
-        for dy in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                if dx * dx + dy * dy > r * r:
-                    continue
-                ny = ys + dy
-                nx = xs + dx
-                ok = (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
-                out[ny[ok], nx[ok]] = True
+        ok = (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
+        out = mask.copy()
+        out[ny[ok], nx[ok]] = True
         return out
 
     def find_frontiers(
