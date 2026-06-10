@@ -46,11 +46,14 @@ room and the victim is two offset doorways away, out of thermal line-of-sight.
 | Wall collisions | **0** |
 | Victim localisation error (thermal+LIDAR fusion) | **1.2 cm** |
 | Distance travelled | 25.1 m |
-| Map coverage at finish | ~60% of the building |
+| Map coverage at finish | ~100% of the building |
 
-Across 8 random sensor-noise seeds: **8/8 success, 0 collisions**, victim
-localised to within a few centimetres every time. (Reproduce with
-`pytest -q`, which includes an end-to-end integration test.)
+Across a **100-seed Monte-Carlo**: 99% success, **0 collisions in every
+episode**, median time-to-rescue 42.5 s, victim localised to a median
+**1.5 cm**. The full quantitative study — sensor-degradation sweeps, failure
+anatomy, and 60 randomized victim placements (60/60 reached) — lives in
+[`analysis/ANALYSIS.md`](analysis/ANALYSIS.md); reproduce it with
+`python analysis/run_analysis.py`.
 
 ---
 

@@ -42,6 +42,9 @@ include = ["pyroscout*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# The write-up notebook is narrative prose with notebook idioms (cell-level
+# imports, output-suppressing semicolons) that source-code lint rules reject.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
