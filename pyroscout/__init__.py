@@ -1,11 +1,7 @@
-"""PyroScout — Thermal-LIDAR fusion for autonomous search-and-rescue navigation.
+"""PyroScout: a 2D search-and-rescue simulator fusing LIDAR and thermal sensing.
 
-A compact, dependency-light 2D robotics simulator that demonstrates the full
-mobile-robot autonomy stack:
-
-    perception (LIDAR + thermal) -> mapping -> planning -> control
-
-See the top-level README for the theory behind each layer.
+See the README for how the layers (perception, mapping, planning, control)
+fit together.
 """
 
 from .control import PurePursuit

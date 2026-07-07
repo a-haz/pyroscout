@@ -1,4 +1,4 @@
-"""Exteroceptive sensors: LIDAR (geometry) and thermal (heat semantics)."""
+"""Simulated sensors: LIDAR and thermal."""
 
 from .lidar import Lidar2D, LidarScan
 from .thermal import ThermalDetection, ThermalSensor

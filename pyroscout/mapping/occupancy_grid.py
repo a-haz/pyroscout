@@ -1,21 +1,13 @@
 """A log-odds occupancy grid built online from LIDAR scans.
 
-The grid stores, per cell, the *log-odds* of that cell being occupied::
+Each cell stores ``l = log(p(occupied) / p(free))``, which makes the Bayesian
+update a simple addition: beams that pass through a cell subtract a "free"
+increment, the cell a beam lands in gets an "occupied" increment. Cells start
+at 0 (unknown) and sharpen as evidence accumulates.
 
-    l = log( p(occupied) / p(free) )
-
-Log-odds are convenient because Bayesian updates become simple additions: every
-beam that passes *through* a cell subtracts a "free" increment, and the cell a
-beam *lands in* gets an "occupied" increment.  Starting from ``l = 0``
-(``p = 0.5``, i.e. unknown), the map sharpens towards 0 or 1 as evidence builds.
-
-On top of the raw map we provide two planning-oriented views:
-
-* :meth:`costmap` — a boolean "is this cell blocked?" grid, with obstacles
-  *inflated* by the robot radius so a point-robot planner produces body-safe
-  paths.
-* :meth:`find_frontiers` — free cells that border still-unknown space, the
-  classic target set for autonomous exploration.
+:meth:`costmap` and :meth:`find_frontiers` derive the planning views: a
+blocked/free grid with obstacles inflated by the robot radius, and the free
+cells bordering unknown space that exploration targets.
 """
 
 from __future__ import annotations
@@ -71,7 +63,6 @@ class OccupancyGrid:
         self.l_free = float(l_free)
         self.l_clamp = float(l_clamp)
 
-    # --- coordinate transforms -------------------------------------------------
     def world_to_grid(self, x: float, y: float) -> tuple[int, int]:
         return int(x // self.resolution), int(y // self.resolution)
 
@@ -81,7 +72,6 @@ class OccupancyGrid:
     def in_bounds(self, cx: int, cy: int) -> bool:
         return 0 <= cx < self.nx and 0 <= cy < self.ny
 
-    # --- belief views ----------------------------------------------------------
     @property
     def prob(self) -> np.ndarray:
         """Per-cell occupancy probability in ``[0, 1]``."""
@@ -92,7 +82,6 @@ class OccupancyGrid:
         """True for cells that have received at least one observation."""
         return self.log_odds != 0.0
 
-    # --- mapping ---------------------------------------------------------------
     def update(self, scan) -> None:
         """Fuse one :class:`~pyroscout.sensors.lidar.LidarScan` into the map."""
         rx, ry = self.world_to_grid(scan.pose.x, scan.pose.y)
@@ -116,7 +105,6 @@ class OccupancyGrid:
 
         np.clip(self.log_odds, -self.l_clamp, self.l_clamp, out=self.log_odds)
 
-    # --- planning views --------------------------------------------------------
     def costmap(self, occ_threshold: float = 0.65, inflate_radius: float = 0.0):
         """Boolean grid where ``True`` means "blocked / do not traverse".
 

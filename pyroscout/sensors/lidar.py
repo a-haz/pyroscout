@@ -1,9 +1,5 @@
-"""A simulated 2D LIDAR (planar laser range finder).
-
-A real spinning LIDAR fires a laser at many angles and times the reflection to
-estimate distance.  We reproduce that by casting one ray per beam against the
-world geometry and adding a little Gaussian noise to mimic sensor error.
-"""
+"""A simulated 2D LIDAR: one ray cast per beam against the world geometry,
+plus Gaussian range noise."""
 
 from __future__ import annotations
 

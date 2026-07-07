@@ -1,10 +1,7 @@
 """A* search over an occupancy costmap.
 
-A* finds the lowest-cost path on a graph by expanding nodes in order of
-``f = g + h`` where ``g`` is the cost so far and ``h`` is an *admissible*
-(never-overestimating) estimate of the cost to the goal.  On a grid with
-8-connectivity, straight-line (Euclidean) distance is admissible, so the path
-A* returns is guaranteed optimal.
+Uses Euclidean distance as the heuristic, which is admissible on an
+8-connected grid, so returned paths are optimal.
 """
 
 from __future__ import annotations

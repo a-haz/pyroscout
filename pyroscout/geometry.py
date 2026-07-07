@@ -1,9 +1,7 @@
 """Geometric primitives shared across the simulator.
 
-The single most important routine here is :func:`cast_rays`, a vectorised
-ray-vs-segment intersection test.  Both the LIDAR (geometry sensing) and the
-thermal sensor (line-of-sight / occlusion checks) are built on top of it, so it
-is worth getting right and fast.
+The workhorse is :func:`cast_rays`, a vectorised ray-vs-segment intersection
+test used by both the LIDAR and the thermal sensor's occlusion checks.
 """
 
 from __future__ import annotations
@@ -28,11 +26,10 @@ class Pose:
 
 
 def wrap_to_pi(angle):
-    """Wrap an angle (or array of angles) to the half-open interval (-pi, pi].
+    """Wrap an angle (or array of angles) to (-pi, pi].
 
-    Heading errors must be wrapped before they are fed to a controller,
-    otherwise a robot pointing at -179 deg and wanting +179 deg would think it
-    needs to spin almost all the way around instead of nudging 2 deg.
+    Heading errors need this before hitting a controller, or a robot at
+    -179 deg wanting +179 deg would spin the long way round.
     """
     return (np.asarray(angle) + np.pi) % (2.0 * np.pi) - np.pi
 

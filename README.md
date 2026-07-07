@@ -1,203 +1,118 @@
-# 🔥🤖 PyroScout — Thermal-LIDAR Fusion for Autonomous Search-and-Rescue
+# PyroScout
 
 [![CI](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml/badge.svg)](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen.svg)](tests/)
 
-A from-scratch 2D robotics simulator in which a mobile robot is dropped into a
-building it has **never seen**, and must **find a victim** using two
-complementary senses — exactly the thermal + LIDAR pairing studied in autonomous
-search-and-rescue navigation:
-
-| Sense | Sensor | Question it answers |
-|------|--------|--------------------|
-| 📡 **Geometry** | 2D LIDAR (360° ranging) | *"Where are the walls?"* — builds a map from nothing |
-| 🌡️ **Semantics** | Thermal sensor | *"Where is the heat?"* — tells the robot **what** to go to |
-
-The robot **fuses** them: LIDAR builds the map, the thermal sensor picks the
-goal, and a behaviour state machine drives the robot to **explore → detect →
-plan → navigate → arrive** — all autonomously, and without ever touching a wall.
+A small 2D robotics simulator. A robot is dropped into a building it has never
+seen and has to find a victim using two sensors: a LIDAR, which tells it where
+the walls are, and a thermal sensor, which tells it where the heat is. Neither
+is enough on its own — the LIDAR builds the map, the thermal sensor picks the
+goal, and a behaviour state machine drives the robot from exploration to
+arrival without touching a wall.
 
 <p align="center">
   <img src="assets/demo.gif" width="100%" alt="PyroScout search-and-rescue demo">
 </p>
 
-> **Left:** the ground truth the robot can't see — walls, a pillar, the victim's
-> heat signature (★), and the live LIDAR fan.
-> **Right:** the occupancy-grid map the robot *infers* from LIDAR, with its
-> live plan drawn on top. Watch the right panel fill in as the robot explores.
+The left panel is the ground truth the robot can't see: walls, a pillar, the
+victim's heat signature (star), and the live LIDAR fan. The right panel is the
+occupancy grid the robot infers from LIDAR, with its current plan drawn on top.
+It starts almost entirely grey (unknown) and fills in as the robot explores.
 
-📓 **Prefer a narrated walk-through?** Read
-[`notebooks/pyroscout_writeup.ipynb`](notebooks/pyroscout_writeup.ipynb) — a
-blog-style article that builds the whole system, layer by layer, with runnable
-code and inline figures.
+There's a longer narrated version of all of this, with runnable code and
+figures, in [`notebooks/pyroscout_writeup.ipynb`](notebooks/pyroscout_writeup.ipynb).
 
----
+On the bundled scenario (seed 0) the robot starts blind in the left room with
+the victim two offset doorways away, out of thermal line of sight. It reaches
+the victim in about 47 simulated seconds with zero wall contacts, and the fused
+thermal estimate lands about a centimetre from the true position. Other noise
+seeds behave the same; the integration test in
+[`tests/test_navigator.py`](tests/test_navigator.py) runs the full scenario as
+part of the suite.
 
-## 📊 Results
+## How it works
 
-Running the bundled scenario (`seed=0`): the robot starts blind in the left
-room and the victim is two offset doorways away, out of thermal line-of-sight.
+The layout is the usual mobile-robot pipeline, one module per layer:
+perception ([`sensors/`](pyroscout/sensors)) feeds mapping
+([`mapping/occupancy_grid.py`](pyroscout/mapping/occupancy_grid.py)), which
+feeds planning ([`planning/astar.py`](pyroscout/planning/astar.py)), which
+feeds control ([`control/pure_pursuit.py`](pyroscout/control/pure_pursuit.py)),
+with [`navigator.py`](pyroscout/navigator.py) making the decisions on top.
 
-| Metric | Value |
-|---|---|
-| Outcome | ✅ Victim reached |
-| Wall collisions | **0** |
-| Victim localisation error (thermal+LIDAR fusion) | **1.2 cm** |
-| Distance travelled | 25.1 m |
-| Map coverage at finish | ~60% of the building |
+### Sensing
 
-Across 8 random sensor-noise seeds: **8/8 success, 0 collisions**, victim
-localised to within a few centimetres every time. (Reproduce with
-`pytest -q`, which includes an end-to-end integration test.)
-
----
-
-## 🧠 The autonomy stack
-
-PyroScout implements the classic mobile-robot pipeline, one module per layer:
-
-```mermaid
-flowchart LR
-  R([Robot pose]) --> L[LIDAR scan]
-  R --> T[Thermal sense]
-  L --> M[Occupancy grid<br/>log-odds mapping]
-  T --> F[Fusion<br/>victim estimate]
-  M --> P[A* planner<br/>clearance-aware]
-  F --> P
-  M -. frontiers .-> P
-  P --> C[Pure-pursuit<br/>controller]
-  C --> A([v, omega commands])
-  A --> R
-```
-
-| Layer | Module | Concept demonstrated |
-|---|---|---|
-| Body | [`robot.py`](pyroscout/robot.py) | Differential-drive kinematics (exact arc integration) |
-| Perception | [`sensors/lidar.py`](pyroscout/sensors/lidar.py) | Vectorised ray-casting range sensing + noise |
-| Perception | [`sensors/thermal.py`](pyroscout/sensors/thermal.py) | Inverse-square thermal model, occlusion, range-from-intensity |
-| Mapping | [`mapping/occupancy_grid.py`](pyroscout/mapping/occupancy_grid.py) | Log-odds occupancy grids, frontier detection, clearance transform |
-| Planning | [`planning/astar.py`](pyroscout/planning/astar.py) | A* graph search, corner-cut prevention, cost fields |
-| Control | [`control/pure_pursuit.py`](pyroscout/control/pure_pursuit.py) | Geometric path following |
-| Brain | [`navigator.py`](pyroscout/navigator.py) | Sensor fusion + behaviour state machine + exploration |
-
----
-
-## 🔬 How it works
-
-### 1. Sensing the world
-
-**LIDAR** is simulated by casting one ray per beam and finding the nearest wall
-segment it strikes — a single vectorised linear-algebra solve handles all
-beams against all walls at once (see `cast_rays` in
-[`geometry.py`](pyroscout/geometry.py)). Gaussian noise is added to mimic a real
-sensor.
+LIDAR is simulated by casting one ray per beam and finding the nearest wall
+segment it strikes. All beams are tested against all walls in a single
+vectorised linear-algebra solve (`cast_rays` in
+[`geometry.py`](pyroscout/geometry.py)), with Gaussian noise added on top.
 
 <p align="center"><img src="assets/lidar_scan.png" width="65%" alt="LIDAR scan"></p>
 
-**The thermal sensor** is what makes this a *search* problem. Radiated power
-falls off with the square of distance, so a source of strength `I0` at distance
-`d` reads:
+The thermal sensor is what makes this a search problem. Radiated power falls
+off with the square of distance, so a source of strength `I0` at distance `d`
+reads `I0 / (d**2 + 1)`. That's invertible, so a calibrated sensor can turn an
+intensity reading back into a range estimate. Two effects make it non-trivial:
+walls block infrared (checked with a ray cast), so the robot has to physically
+get around corners before it can see the heat; and both bearing and intensity
+are noisy, so the position estimate is smoothed over time with an exponential
+filter.
 
-```
-measured = I0 / (d**2 + 1)
-```
+### Mapping
 
-Because that's invertible, the sensor recovers a **range estimate** from a raw
-intensity reading: `d_est = sqrt(I0 / measured - 1)`. Two effects make it
-realistic and the problem hard:
+The robot starts with no map. Each LIDAR scan updates a grid storing the
+log-odds of occupancy per cell, which turns Bayesian updates into additions:
+cells a beam passes through get "more free", the cell it lands in gets "more
+occupied". From this map come two planning views — a costmap with obstacles
+inflated by the robot radius (so a point planner yields body-safe paths), and a
+clearance distance transform used to keep paths away from walls.
 
-- **Occlusion** — infrared is blocked by walls, so the victim is only detected
-  with clear line of sight (checked with a ray cast). The robot must physically
-  *get around corners* before it can "see" the heat.
-- **Noise** — bearing and intensity are corrupted, so the estimate is smoothed
-  over time with an exponential filter.
+### Planning
 
-### 2. Mapping (log-odds occupancy grid)
-
-The robot starts with **no map**. Each LIDAR scan updates a grid storing the
-*log-odds* of occupancy per cell, which turns Bayesian updates into simple
-additions: cells a beam passes through get "more free", the cell it lands in
-gets "more occupied".
-
-```
-l = log( p(occupied) / p(free) )      # 0 = unknown, <0 = free, >0 = occupied
-```
-
-From this map we derive two planning views:
-- an **inflated costmap** (obstacles grown by the robot radius, so a point
-  planner yields body-safe paths), and
-- a **clearance distance-transform** (how far each cell is from the nearest
-  wall) used to keep paths off the corners.
-
-### 3. Planning (clearance-aware A*)
-
-[A*](pyroscout/planning/astar.py) finds the optimal path on the grid. Two
-details matter for real robots:
-
-- **No corner cutting** — diagonal moves that would clip a wall corner are
-  forbidden.
-- **Clearance-aware** — A* consumes a cost field that penalises cells close to
-  walls, so it prefers the *middle* of doorways. The effect is visible below:
-  naive shortest-path (orange) scrapes the corners; clearance-aware (green)
-  stays centred.
+A* finds the optimal path on the grid, with two details that matter for a
+physical robot: diagonal moves that would clip a wall corner are forbidden, and
+the search consumes a cost field that penalises cells close to walls, so it
+prefers the middle of doorways. The difference is visible below — plain
+shortest-path (orange) scrapes the corners, clearance-aware (green) stays
+centred.
 
 <p align="center"><img src="assets/planning.png" width="70%" alt="Clearance-aware planning"></p>
 
-### 4. Control (pure pursuit)
+### Control
 
-A [pure-pursuit controller](pyroscout/control/pure_pursuit.py) turns the path
-into `(v, omega)` commands by steering toward a "carrot" point a fixed lookahead
-ahead, with guards to rotate-in-place when badly misaligned and to slow on the
-approach to the goal.
+A pure-pursuit controller turns the path into `(v, omega)` commands by steering
+toward a point a fixed lookahead distance ahead, rotating in place when badly
+misaligned and slowing on the approach to the goal.
 
-### 5. Fusion + behaviour (the brain)
+### Behaviour
 
-The [`Navigator`](pyroscout/navigator.py) ties it together with a state machine:
+The [`Navigator`](pyroscout/navigator.py) ties it together with a small state
+machine. While SEARCHING it does frontier-based exploration: drive to the
+boundary between mapped free space and the unknown. Frontier cells are
+clustered to ignore speckle, and target selection trades off proximity against
+cluster size (a doorway into a new room beats a leftover pocket), with
+commitment and visited-memory to avoid oscillating. The moment the thermal
+sensor gets line of sight it switches to NAVIGATING: plan to the fused victim
+estimate and follow it, replanning as the map grows. If the victim isn't
+reachable on the known map yet, it explores toward the estimate instead,
+mapping around whatever is in the way. REACHED and FAILED (no frontiers left)
+are terminal.
 
-```mermaid
-stateDiagram-v2
-  [*] --> SEARCHING
-  SEARCHING --> NAVIGATING: thermal detection
-  NAVIGATING --> SEARCHING: path blocked, map around the wall
-  NAVIGATING --> REACHED: at victim
-  SEARCHING --> FAILED: no frontiers left
-  REACHED --> [*]
-```
-
-- **SEARCHING** uses **frontier-based exploration**: it drives to the boundary
-  between mapped free space and the unknown, expanding the map. Frontiers are
-  clustered (ignore speckle), and selection trades off proximity against cluster
-  size (a doorway into a new room beats a leftover pocket), with commitment and
-  visited-memory to avoid oscillating.
-- The moment thermal gets line of sight, it switches to **NAVIGATING**: plan to
-  the fused victim estimate and follow it, replanning as the map grows. If the
-  victim isn't reachable yet, it explores *toward* it — mapping around the wall.
-
----
-
-## 🚀 Quickstart
+## Running it
 
 ```bash
-# 1. Install (editable, with dev tools)
 python -m pip install -e .[dev]
 
-# 2. Run the search-and-rescue demo -> writes assets/demo.gif + assets/hero.png
+# the search-and-rescue demo; writes assets/demo.gif and assets/hero.png
 python examples/run_search_rescue.py            # or --seed 3, --no-gif
 
-# 3. Generate the explainer figures
+# the explainer figures
 python examples/demo_lidar.py
 python examples/demo_planning.py
 
-# 4. Run the test suite (41 tests, incl. an end-to-end run)
-pytest -q
-
-# 5. Lint
+pytest
 ruff check .
 ```
 
-Using it as a library:
+As a library:
 
 ```python
 from pyroscout.scenarios import demo_navigator
@@ -207,9 +122,7 @@ result = nav.run(max_steps=700)
 print(result.success, result.collisions, result.path_length)
 ```
 
----
-
-## 🗂️ Project structure
+## Layout
 
 ```
 pyroscout/
@@ -218,7 +131,7 @@ pyroscout/
 ├── robot.py                 # differential-drive kinematics
 ├── sensors/
 │   ├── lidar.py             # 2D LIDAR ray-casting
-│   └── thermal.py           # thermal model: inverse-square + occlusion + noise
+│   └── thermal.py           # inverse-square heat model + occlusion + noise
 ├── mapping/
 │   └── occupancy_grid.py    # log-odds map, frontiers, clearance, costmap
 ├── planning/
@@ -229,30 +142,16 @@ pyroscout/
 ├── viz.py                   # matplotlib rendering / GIF export
 └── scenarios.py             # the reproducible demo world
 examples/                    # runnable demos that also produce the figures
-tests/                       # 41 unit + integration tests
+tests/                       # unit + integration tests
 ```
 
----
+## Notes
 
-## 🎓 Design notes & possible extensions
+Everything here is classical robotics on purpose — each layer is a
+well-understood algorithm you can read in an afternoon. Obvious extensions if
+you want to take it further: a particle filter to drop the perfect-odometry
+assumption (making it proper SLAM), a local planner like DWA for moving
+obstacles, or feeding it real data (a 3D LIDAR projected to 2D plus a thermal
+camera's detections maps onto the same architecture).
 
-This project deliberately keeps **classical, interpretable** robotics
-algorithms (no black boxes) so each layer is understandable on its own. Natural
-next steps:
-
-- **Localisation** — currently the robot has perfect odometry; adding a particle
-  filter (Monte-Carlo localisation) would make it true SLAM.
-- **Local planning** — swap pure pursuit for a Dynamic Window Approach (DWA) to
-  handle moving obstacles.
-- **3D / real data** — the architecture maps directly onto a 3D LIDAR projected
-  to 2D, and a real thermal camera's detections.
-- **Multiple victims / multi-robot** coordination.
-
----
-
-## 📜 License
-
-MIT — see [LICENSE](LICENSE).
-
-<sub>Built as a portfolio project exploring thermal + LIDAR fusion for
-autonomous robot navigation.</sub>
+MIT licensed, see [LICENSE](LICENSE).

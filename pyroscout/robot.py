@@ -1,15 +1,9 @@
 """Differential-drive robot kinematics.
 
-A differential-drive robot is steered by commanding a forward (linear) velocity
-``v`` and a turn rate ``omega``.  Given those, the pose evolves as::
-
-    x'     = v * cos(theta)
-    y'     = v * sin(theta)
-    theta' = omega
-
-We integrate this in closed form over a time step, which (unlike naive Euler
-integration) is exact for piecewise-constant commands and keeps the robot
-tracing perfect arcs.
+Commands are a forward velocity ``v`` and turn rate ``omega``; the pose
+evolves as ``x' = v cos(theta)``, ``y' = v sin(theta)``, ``theta' = omega``.
+Integrated in closed form per step, which is exact for piecewise-constant
+commands (the robot traces true arcs, unlike Euler integration).
 """
 
 from __future__ import annotations

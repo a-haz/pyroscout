@@ -1,12 +1,8 @@
 """Matplotlib visualisation: side-by-side "ground truth" vs "robot belief".
 
-Everything here is rendered with the non-interactive *Agg* backend so it runs
-headless (CI, servers, this container) and writes GIF/PNG files directly.
-
-The left panel shows the true world the robot can never fully see; the right
-panel shows the occupancy grid it has inferred from LIDAR.  Watching the right
-panel fill in — and the planned path snake through it towards the heat estimate
-— is the whole story of the project in one image.
+Rendered with the non-interactive Agg backend so it runs headless (CI,
+servers) and writes GIF/PNG files directly. Left panel: the true world.
+Right panel: the occupancy grid the robot has inferred from LIDAR.
 """
 
 from __future__ import annotations

@@ -1,9 +1,9 @@
 """Ready-made scenarios so the demo and the tests share one world.
 
-``search_rescue_world`` lays out a small three-room "building": the robot starts
-in the left room, the victim (heat source) is in the right room, and the two
-interior walls have *offset* doorways so the robot has to wind through the middle
-room — and cannot see the victim's heat until it rounds the corners.
+``search_rescue_world`` lays out a small three-room building: robot in the
+left room, victim in the right, and offset doorways in the two interior walls
+so the victim's heat is out of line of sight until the robot rounds the
+corners.
 """
 
 from __future__ import annotations

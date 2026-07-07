@@ -10,18 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Aiman Hazim", email = "dev@aimanhazim.com" }]
-keywords = [
-    "robotics",
-    "autonomy",
-    "navigation",
-    "lidar",
-    "thermal",
-    "sensor-fusion",
-    "occupancy-grid",
-    "a-star",
-    "frontier-exploration",
-    "pure-pursuit",
-]
+keywords = ["robotics", "navigation", "lidar", "sensor-fusion", "simulation"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -42,8 +31,6 @@ include = ["pyroscout*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-# Notebooks under notebooks/ are narrative write-ups, not shippable code;
-# don't lint them with the library's style rules.
 extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]

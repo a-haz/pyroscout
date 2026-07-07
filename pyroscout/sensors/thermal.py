@@ -1,28 +1,17 @@
 """A simulated thermal sensor.
 
-This is the "semantic" sensor: where LIDAR reports *geometry* (distances to
-surfaces), the thermal sensor reports *what matters* — the direction of, and a
-rough distance to, any heat source it can see.
-
-Physical model
---------------
-Radiated power falls off with the square of distance, so we model the intensity
-measured from a source of strength ``I0`` at distance ``d`` as::
+Radiated power falls off with the square of distance, so the intensity
+measured from a source of strength ``I0`` at distance ``d`` is modelled as::
 
     measured = I0 / (d**2 + 1)
 
-(The ``+1`` keeps the value finite as ``d -> 0``.)  Because the relationship is
-invertible, a calibrated sensor can turn an intensity reading back into a range
-estimate::
+with the ``+1`` keeping the value finite as ``d -> 0``. The relationship is
+invertible, so a calibrated sensor can turn an intensity reading back into a
+range estimate: ``d_est = sqrt(I0 / measured - 1)``.
 
-    d_est = sqrt(I0 / measured - 1)
-
-Two effects make this realistic — and make the navigation problem non-trivial:
-
-* **Occlusion** — walls block infrared, so a source is only detected when the
-  sensor has line of sight to it (checked with a LIDAR-style ray cast).
-* **Noise** — both the intensity and the bearing readings are corrupted, so the
-  resulting position estimate drifts and must be filtered over time.
+Walls block infrared (checked with a ray cast), and both intensity and bearing
+readings are noisy, so the resulting position estimate has to be filtered over
+time by the consumer.
 """
 
 from __future__ import annotations

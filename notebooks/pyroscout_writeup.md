@@ -1,44 +1,36 @@
-# PyroScout: teaching a robot to find people with heat *and* light
+# PyroScout: finding people with heat and light
 
-*A walk-through of a small, from-scratch autonomous-robotics project — building
-the full "autonomy stack" for a search-and-rescue robot that fuses a LIDAR and a
-thermal sensor.*
+A walk-through of PyroScout, a small 2D simulator for a search-and-rescue
+robot that fuses a LIDAR and a thermal sensor.
 
----
+The setup: a robot rolls into a smoke-filled building it has never seen.
+Somewhere inside is a person who needs help. The robot has two senses:
 
-Imagine a robot rolled into a smoke-filled building it has never seen. Somewhere
-inside is a person who needs help. The robot has two senses:
+* a LIDAR, which measures distances to surfaces. It tells the robot where the
+  walls are, but not what matters.
+* a thermal sensor, which sees body heat. It tells the robot where the person
+  is, but nothing about the walls in between.
 
-* a **LIDAR**, which measures distances to surfaces — it tells the robot *where
-  the walls are*, but not what matters;
-* a **thermal sensor**, which sees body heat — it tells the robot *where the
-  person is*, but nothing about the walls in between.
-
-Neither sense is enough alone. **PyroScout** is a 2D simulator that fuses them
-into a single autonomous behaviour: explore the unknown, detect the heat, plan a
-safe path, and drive to the victim — without ever hitting a wall.
+Neither sense is enough alone, so the robot fuses them: explore the unknown,
+detect the heat, plan a safe path, and drive to the victim without hitting a
+wall.
 
 ![PyroScout demo](../assets/demo.gif)
 
-> **Left:** the ground truth the robot can't see. **Right:** the map it *builds*
-> from LIDAR, with its live plan drawn on top.
+Left: the ground truth the robot can't see. Right: the map it builds from
+LIDAR, with its live plan drawn on top.
 
-In one run it reaches the victim with **0 collisions** and localises them to
-within **a couple of centimetres**, purely from noisy sensor data. Let's build
-it up one layer at a time.
+In the run above the robot reaches the victim with no collisions and localises
+them to within a couple of centimetres, purely from noisy sensor data. The
+rest of this notebook builds the system up one layer at a time.
 
-## The big idea: geometry vs. semantics
+## Geometry vs. semantics
 
-The whole project hinges on a separation that shows up all over robotics:
-
-| | LIDAR | Thermal |
-|---|---|---|
-| **Measures** | distance to surfaces | radiated heat |
-| **Answers** | *"where are the walls?"* | *"where is the heat?"* |
-| **Role** | builds the **map** | picks the **goal** |
-| **Weakness** | no idea what's important | no idea what's in the way |
-
-The robot's "brain" turns this into a loop:
+The design hinges on a separation that shows up all over robotics. The LIDAR
+measures distance to surfaces: it builds the map, but has no idea what is
+important. The thermal sensor measures radiated heat: it picks the goal, but
+has no idea what is in the way. The robot's "brain" turns the pair into a
+loop:
 
 ```
        sense ──▶ map (LIDAR)  ──▶ plan ──▶ control ──▶ move
@@ -78,11 +70,11 @@ print("PyroScout ready.")
 
 ## 1. The world
 
-The test environment is a small three-room "building". Two interior walls have
-**offset doorways**, so the robot has to wind through the middle room — and,
-crucially, it **cannot see the victim's heat** from the start because walls block
-infrared. The robot begins blind in the left room (blue); the victim (red star)
-is in the far right room.
+The test environment is a small three-room building. The two interior walls
+have offset doorways, so the robot has to wind through the middle room, and it
+cannot see the victim's heat from the start because walls block infrared. The
+robot begins blind in the left room (blue); the victim (red star) is in the
+far right room.
 
 
 ```python
@@ -108,16 +100,15 @@ plt.show()
     
 
 
-## 2. LIDAR — seeing geometry
+## 2. LIDAR
 
-A LIDAR fires laser beams in many directions and times the reflections. We
-simulate this by **ray casting**: for each beam, solve for the nearest wall
-segment it strikes. The clever bit is doing all beams against all walls in one
-vectorised linear-algebra step, then adding a little noise to mimic a real
-sensor.
+A LIDAR fires laser beams in many directions and times the reflections. The
+simulation ray-casts each beam and finds the nearest wall segment it strikes,
+doing all beams against all walls in one vectorised linear-algebra step, then
+adds a little noise to mimic a real sensor.
 
-Below is a single 360° sweep from the start position. Notice the **shadows** —
-the robot only learns about surfaces it can actually see.
+Below is a single 360° sweep from the start position. Note the shadows: the
+robot only learns about surfaces it can actually see.
 
 
 ```python
@@ -141,25 +132,22 @@ plt.show()
     
 
 
-## 3. The thermal sensor — seeing heat
+## 3. The thermal sensor
 
 Heat radiates and falls off with the square of distance, so a source of strength
 $I_0$ at distance $d$ reads:
 
 $$\text{measured} = \frac{I_0}{d^2 + 1}$$
 
-Because that relationship is invertible, a calibrated sensor can turn a raw
-intensity reading back into a **range estimate**:
-$d_\text{est} = \sqrt{I_0/\text{measured} - 1}$. Combined with the bearing, that
-single reading becomes a *position* estimate for the victim.
+That relationship is invertible, so a calibrated sensor can turn a raw
+intensity reading back into a range estimate:
+$d_\text{est} = \sqrt{I_0/\text{measured} - 1}$. Combined with the bearing,
+one reading becomes a position estimate for the victim.
 
-Two things make it realistic — and make the search hard:
-
-* **Occlusion**: walls block infrared, so the victim is only detected with clear
-  line of sight. From the start position the victim is hidden; the robot has to
-  physically get around corners first.
-* **Noise**: bearing and intensity are corrupted, so the estimate is smoothed
-  over time.
+Two things make it realistic, and make the search hard. Walls block infrared,
+so the victim is only detected with clear line of sight; from the start
+position the robot has to physically get around corners first. And both
+bearing and intensity are noisy, so the estimate is smoothed over time.
 
 
 ```python
@@ -209,19 +197,19 @@ plt.show()
     
 
 
-## 4. Mapping — building a picture from nothing
+## 4. Mapping
 
-The robot starts with **no map**. Every LIDAR sweep updates an **occupancy
-grid** that stores, per cell, the *log-odds* of being occupied:
+The robot starts with no map. Every LIDAR sweep updates an occupancy grid that
+stores, per cell, the log-odds of being occupied:
 
 $$\ell = \log\frac{p(\text{occupied})}{p(\text{free})}$$
 
-Log-odds make Bayesian updates trivial — they become additions. Cells a beam
-passes *through* get "more free"; the cell it lands *in* gets "more occupied".
-Starting from $\ell = 0$ (totally unknown), the map sharpens as evidence builds.
+Log-odds make the Bayesian update an addition: cells a beam passes through get
+"more free", the cell it lands in gets "more occupied". Starting from
+$\ell = 0$ (unknown), the map sharpens as evidence builds.
 
-Let's run the full robot once and watch the map fill in — early in the run vs.
-at the end.
+Here the full robot runs once and we compare the map early in the run against
+the end.
 
 
 ```python
@@ -248,19 +236,15 @@ plt.show()
     
 
 
-## 5. Planning — A\* that respects clearance
+## 5. Planning
 
-Given a map and a goal, **A\*** finds the optimal path on the grid. Two details
-matter for a *physical* robot:
+Given a map and a goal, A\* finds the optimal path on the grid. Two details
+matter for a physical robot. Diagonal moves that would clip a wall corner are
+forbidden. And plain shortest-path hugs walls and scrapes doorway corners, so
+a cost field computed from a distance transform penalises cells near walls,
+pushing the planner towards the middle of corridors.
 
-1. **No corner-cutting** — diagonal moves that would clip a wall corner are
-   forbidden.
-2. **Clearance awareness** — plain shortest-path hugs walls and scrapes doorway
-   corners. We add a *cost field* (computed from a distance transform) that
-   penalises cells near walls, so the planner prefers the **middle** of
-   corridors.
-
-The difference is clear when we plan the same start→victim route both ways: 
+The difference shows when the same start-to-victim route is planned both ways:
 
 
 ```python
@@ -303,23 +287,23 @@ plt.show()
     
 
 
-## 6. The brain — control and fusion
+## 6. Control and fusion
 
-Two final pieces turn a plan into motion and motion into a *mission*.
+Two final pieces turn a plan into motion and motion into a mission.
 
-**Pure-pursuit control** converts the path into velocity commands by steering
+Pure-pursuit control converts the path into velocity commands by steering
 toward a "carrot" point a fixed lookahead distance ahead — simple, smooth, and
 the workhorse of real path followers.
 
-**The behaviour state machine** is where the two senses fuse:
+The behaviour state machine is where the two senses fuse:
 
-* `SEARCHING` — no victim seen yet, so use **frontier exploration**: drive to the
+* `SEARCHING` — no victim seen yet, so use frontier exploration: drive to the
   boundary between mapped and unknown space to grow the map. Frontiers are
   clustered and chosen by a proximity-vs-size trade-off, with commitment and
   visited-memory so the robot doesn't dither.
-* `NAVIGATING` — the instant thermal gets line of sight, plan to the fused victim
-  estimate and follow it, replanning as the map grows. If the victim isn't
-  reachable yet, explore *toward* it — mapping around the blocking wall.
+* `NAVIGATING` — the instant thermal gets line of sight, plan to the fused
+  victim estimate and follow it, replanning as the map grows. If the victim
+  isn't reachable yet, explore toward it, mapping around the blocking wall.
 * `REACHED` — arrived.
 
 Here's the path the robot actually drove, over the final map it built:
@@ -363,28 +347,16 @@ print(f"Localisation   : {err*100:.1f} cm from the true victim position")
 
 ## Putting it together
 
-That trajectory is the whole stack working as one: the robot sweeps the left and
-middle rooms (frontier exploration), threads the offset doorways
+That trajectory is the whole stack working at once: the robot sweeps the left
+and middle rooms (frontier exploration), threads the offset doorways
 (clearance-aware planning), catches the victim's heat the moment it rounds the
 last corner (thermal + occlusion), fuses that into a centimetre-accurate goal,
-and drives home (pure pursuit) — **without a single collision**.
+and drives home (pure pursuit) with no collisions along the way.
 
-### What this project demonstrates
+A few directions this could go next: a particle filter would drop the
+perfect-odometry assumption and make it proper SLAM; a local planner such as
+the Dynamic Window Approach would handle moving obstacles; and the
+architecture maps directly onto real data — a 3D LIDAR projected to 2D plus a
+thermal camera's detections.
 
-- Sensor modelling (ray casting, inverse-square heat, occlusion, noise)
-- Probabilistic mapping (log-odds occupancy grids)
-- Autonomous exploration (frontier search)
-- Graph search and cost-aware planning (A\* + clearance fields)
-- Closed-loop control (pure pursuit)
-- Sensor fusion and decision-making (a behaviour state machine)
-
-### Where it could go next
-
-- **Localisation** (a particle filter) to drop the perfect-odometry assumption →
-  true SLAM.
-- **Local planning** (Dynamic Window Approach) for moving obstacles.
-- **Real data**: the architecture maps directly onto a 3D LIDAR projected to 2D
-  and a real thermal camera.
-
-The full source — every layer above is one small, readable module — plus tests
-and CI, is on GitHub. Thanks for reading!
+The full source, tests and CI live in the repository root.

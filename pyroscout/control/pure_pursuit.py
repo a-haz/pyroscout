@@ -1,20 +1,13 @@
 """A pure-pursuit path-following controller.
 
-Pure pursuit steers a robot towards a "carrot" point a fixed *lookahead*
-distance ahead on the path.  The geometry of driving an arc to that point gives
-a steering curvature::
+Steers towards a "carrot" point a fixed lookahead distance ahead on the path.
+The arc through that point gives a curvature ``kappa = 2 * sin(alpha) / L_d``
+(``alpha`` = heading error to the carrot, ``L_d`` = lookahead), and the turn
+rate is ``omega = v * kappa``. A larger lookahead tracks smoother but looser.
 
-    kappa = 2 * sin(alpha) / L_d
-
-where ``alpha`` is the heading error to the carrot and ``L_d`` the lookahead.
-Turn rate is then ``omega = v * kappa``.  A larger lookahead yields smoother but
-looser tracking; a smaller one tracks tightly but can oscillate.
-
-We add two practical guards:
-
-* if the carrot is well off to the side (or behind), slow down and turn nearly
-  in place rather than swinging wide;
-* slow down on the approach to the goal and report ``done`` inside a tolerance.
+Two practical guards on top: turn nearly in place when the carrot is far off
+to the side or behind, and slow down near the goal, reporting ``done`` inside
+a tolerance.
 """
 
 from __future__ import annotations

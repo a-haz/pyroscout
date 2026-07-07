@@ -1,22 +1,9 @@
-"""The autonomy brain: sensor fusion + a behaviour state machine.
+"""Sensor fusion and the behaviour state machine.
 
-This module wires every other layer together into a closed perception-plan-act
-loop and decides *what the robot should be doing* at each instant:
-
-1. **Sense.**  Take a LIDAR scan (update the map) and a thermal reading.
-2. **Fuse.**  LIDAR gives the *map*; the thermal sensor gives the *goal*.  A
-   thermal detection is projected into the world and smoothed over time into a
-   victim-position estimate.
-3. **Decide.**
-   * ``SEARCHING`` — the victim has not been seen yet, so drive towards the
-     nearest reachable *frontier* (free space bordering the unknown) to expand
-     the map.
-   * ``NAVIGATING`` — the victim has been seen, so plan an A* path to the
-     estimate and follow it; if walls still block the route, keep exploring in
-     the victim's direction until one opens up.
-   * ``REACHED`` / ``FAILED`` — terminal states.
-4. **Act.**  Convert the active path into velocity commands with pure pursuit,
-   with a reactive safety brake as a backstop.
+Wires the other layers into a closed perception-plan-act loop. LIDAR feeds the
+map, thermal detections are smoothed into a victim estimate, and the state
+machine switches between frontier exploration (SEARCHING) and driving to the
+estimate (NAVIGATING) until the robot arrives or runs out of frontiers.
 """
 
 from __future__ import annotations
@@ -132,7 +119,6 @@ class Navigator:
         self._stuck_counter = 0
         self._visited_targets: list[np.ndarray] = []
 
-    # --- fusion ---------------------------------------------------------------
     def _update_goal_estimate(self, detections: list[ThermalDetection]) -> None:
         if not detections:
             return
@@ -145,7 +131,6 @@ class Navigator:
             self.goal_estimate = (1 - a) * self.goal_estimate + a * est
         self.victim_seen = True
 
-    # --- planning helpers -----------------------------------------------------
     def _plan_to(self, goal_xy: np.ndarray) -> np.ndarray | None:
         blocked = self.grid.costmap(inflate_radius=self.inflate)
         start = _nearest_free(blocked, self.grid.world_to_grid(self.robot.x, self.robot.y))
@@ -163,11 +148,9 @@ class Navigator:
     def _frontier_clusters(self) -> tuple[np.ndarray, np.ndarray]:
         """Cluster raw frontier cells into candidate goal points and sizes.
 
-        Frontier *cells* are noisy and numerous; binning them into ~0.6 m cells
-        and taking centroids yields a few stable, meaningful targets and throws
-        away single-cell speckle.  The cluster *size* (cell count) is a proxy
-        for how much new space lies beyond it — a whole doorway into an unmapped
-        room is a big cluster, a leftover pocket is a small one.
+        Binning cells into ~0.6 m buckets and taking centroids gives a few
+        stable targets and drops single-cell speckle. Cluster size is a proxy
+        for how much new space lies beyond it.
         """
         frontiers = self.grid.find_frontiers()
         if not frontiers:
@@ -190,10 +173,10 @@ class Navigator:
     def _choose_frontier_target(self, bias_xy: np.ndarray | None) -> np.ndarray | None:
         """Pick the best reachable frontier cluster we haven't just visited.
 
-        Utility trades off proximity against cluster size (bigger = more new
-        space to gain).  ``bias_xy`` (the victim estimate, when navigating but
-        blocked) replaces "proximity to the robot" with "proximity to the goal",
-        so the robot maps *around* the wall in its way rather than wandering off.
+        Utility trades off proximity against cluster size. When ``bias_xy`` is
+        set (the victim estimate, while blocked) distances are measured from it
+        instead of the robot, so exploration works around the obstruction
+        rather than wandering off.
         """
         centroids, sizes = self._frontier_clusters()
         if len(centroids) == 0:
@@ -248,23 +231,19 @@ class Navigator:
             self.explore_target = None
         self.current_path = path
 
-    # --- main loop ------------------------------------------------------------
     def step(self) -> StepRecord:
         pose = self.robot.pose
 
-        # 1. Sense + map.
         scan = self.lidar.scan(pose, self.world)
         self.grid.update(scan)
         detections = self.thermal.sense(pose, self.world)
         self._update_goal_estimate(detections)
 
-        # 2. Terminal check: have we arrived at the victim estimate?
         if self.victim_seen and self.goal_estimate is not None:
             if np.hypot(*(self.goal_estimate - pose.xy)) < self.reach_radius:
                 self.state = NavState.REACHED
                 return self._record(pose, scan, detections)
 
-        # 3. (Re)plan if needed.
         need_plan = (
             self.current_path is None
             or self._steps_since_plan >= self.replan_every
@@ -272,7 +251,6 @@ class Navigator:
         if need_plan:
             self._replan()
 
-        # 4. Act.
         if self.current_path is None or len(self.current_path) == 0:
             # Nothing to follow: rotate in place to gather information.
             self._stuck_counter += 1
@@ -326,7 +304,6 @@ class Navigator:
             detections=list(detections),
         )
 
-    # --- driver ---------------------------------------------------------------
     def run(self, max_steps: int = 600) -> NavResult:
         """Run the closed loop until the victim is reached or we give up."""
         history: list[StepRecord] = []
