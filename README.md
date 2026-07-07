@@ -55,6 +55,12 @@ anatomy, and 60 randomized victim placements (60/60 reached) — lives in
 [`analysis/ANALYSIS.md`](analysis/ANALYSIS.md); reproduce it with
 `python analysis/run_analysis.py`.
 
+The study also found (and fixed) a real capability gap: with a short-range
+(≤ 4 m) thermal sensor the robot used to map the whole building, never get a
+detection, and give up — 0–5% success no matter how much time it was given.
+The **coverage-search fallback** born from that finding lifts those cells to
+**100%** at a 210 s budget (see §8 of the analysis).
+
 ---
 
 ## 🧠 The autonomy stack

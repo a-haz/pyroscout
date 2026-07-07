@@ -7,7 +7,7 @@ and exactly *how* it fails when it fails.
 Everything here is produced by [`run_analysis.py`](run_analysis.py):
 
 ```bash
-python analysis/run_analysis.py          # full study, ~880 episodes (~12 min on 4 cores)
+python analysis/run_analysis.py          # full study, 1,000 episodes (~16 min on 4 cores)
 python analysis/run_analysis.py --reuse  # regenerate figures/summary from existing CSV
 ```
 
@@ -26,6 +26,7 @@ run until the victim is reached, the navigator gives up, or a step budget
 | Baseline | 100 seeds | sensor noise realizations only (demo configuration, fixed world) |
 | Sensitivity sweeps | 6 parameters × 4–6 levels × 20 seeds | one sensor parameter at a time |
 | Budget extension | cliff levels × 20 seeds | step budget tripled to 2,100 steps |
+| Fallback off | thermal cliff levels × 2 budgets × 20 seeds | coverage-search fallback disabled (the pre-fix stack, for §8's before/after) |
 | Random victims | 60 placements | victim position sampled uniformly over reachable space |
 
 Key metrics:
@@ -118,19 +119,30 @@ at its nominal setting — there is wide margin.
 
 **Cliff axes** — two parameters have sharp failure cliffs:
 
-| Parameter | 100% down to | Cliff |
+| Parameter | 100% down to | Cliff (70 s budget) |
 |---|---|---|
-| Thermal detection range | 9 m | 80% @ 6 m → **5% @ 4 m → 0% @ 3 m** |
+| Thermal detection range | 9 m | 80% @ 6 m → **35% @ 4 m → 25% @ 3 m** |
 | LIDAR max range | 6 m | **40% @ 3 m, 5% @ 4.5 m, 0% @ 2 m** (non-monotonic, see §5) |
 
+The thermal row shows the *current* stack, whose coverage-search fallback
+(§8) already softens that cliff. When this study was first run the fallback
+did not exist and the thermal cliff was a wall: **0% @ 3 m and 5% @ 4 m**,
+unchanged even with 3× the time. §4 dissects that original failure mode —
+reproduced by the study's `fallback_off` arm — and §8 measures the fix,
+which at a 210 s budget eliminates the thermal cliff entirely.
+
 ## 4. Failure anatomy: out of time vs terminally stuck
+
+*(The thermal rows in this section describe the original, pre-fix stack —
+today reproduced by the study's `fallback_off` arm. This is the analysis
+that motivated the coverage-search fallback measured in §8.)*
 
 The terminal states of the failures distinguish two different diseases:
 
 | Failure regime | Terminal state | Saw victim? |
 |---|---|---|
 | Short LIDAR (2–4.5 m) | 100% budget exhaustion (still `SEARCHING`/`NAVIGATING` at 70 s) | sometimes |
-| Short thermal (3–4 m) | ~65% hard `FAILED` (stuck), rest budget exhaustion | **never** |
+| Short thermal (3–4 m), fallback off | ~65% hard `FAILED` (stuck), rest budget exhaustion | **never** |
 
 Tripling the step budget to 210 s separates "slow but solvable" from
 "terminally stuck":
@@ -140,9 +152,9 @@ Tripling the step budget to 210 s separates "slow but solvable" from
 | LIDAR range 2 m | 0% | **50%** | 0/20 |
 | LIDAR range 3 m | 40% | **95%** | 0/20 |
 | LIDAR range 4.5 m | 5% | **100%** | 0/20 |
-| Thermal range 3 m | 0% | **0%** | 20/20 |
-| Thermal range 4 m | 5% | **5%** | 19/20 |
-| Thermal range 6 m | 80% | **100%** | 0/20 |
+| Thermal range 3 m (fallback off) | 0% | **0%** | 20/20 |
+| Thermal range 4 m (fallback off) | 5% | **5%** | 19/20 |
+| Thermal range 6 m (fallback off) | 80% | **100%** | 0/20 |
 
 The two cliffs are different problems:
 
@@ -150,13 +162,14 @@ The two cliffs are different problems:
   a soda straw, so frontier exploration crawls — but it is making progress,
   and most failures recover given more time. (The 4.5 m anomaly is examined
   in §5.)
-- **Short thermal is a *capability gap*.** With a 3–4 m detection range the
+- **Short thermal was a *capability gap*.** With a 3–4 m detection range the
   robot can finish exploring the entire building without ever getting a
   thermal hit (the sensor only faces forward, FOV π), at which point the
-  frontier list is empty, no behaviour exists for "explored everything,
-  found nothing", and the navigator spins in place until the stuck-counter
-  declares `FAILED`. **More time does not help — the stack needs a coverage
-  behaviour it does not have** (§6, recommendation 1).
+  frontier list is empty, no behaviour existed for "explored everything,
+  found nothing", and the navigator spun in place until the stuck-counter
+  declared `FAILED`. **More time did not help — the stack needed a coverage
+  behaviour it did not have.** That behaviour now exists; §8 shows it
+  converts every hard failure into a plain time-budget problem.
 
 ## 5. The LIDAR-range anomaly
 
@@ -215,10 +228,11 @@ the wall-A/wall-B doorway shadows.
 Ordered by measured impact:
 
 1. **Add a coverage-search fallback** for "frontiers exhausted, no detection".
-   A lawnmower sweep over known-free space with lanes spaced by thermal range
-   (plus an in-place 360° "periscope" spin at lane ends to compensate for the
-   forward-only FOV) would convert most short-thermal hard failures —
-   currently 0–5% success at ≤4 m — into slow successes.
+   A sweep over known-free space (plus an in-place 360° "periscope" spin at
+   waypoints to compensate for the forward-only FOV) would convert
+   short-thermal hard failures — 0–5% success at ≤4 m pre-fix — into slow
+   successes. **Implemented — measured in §8: 100% success at a 210 s
+   budget, zero hard-stuck episodes.**
 2. **Add exploration-stall detection.** Baseline seed 77 and the short-LIDAR
    regime both lose time to frontier-target churn and in-place rotation. A
    watchdog on map-growth-per-metre-driven that forces a far-field retarget
@@ -232,6 +246,58 @@ Ordered by measured impact:
    thermal range needs ≥1.5× the largest room dimension (here ≥9 m), LIDAR
    range ≥ the longest corridor sightline (here ≥6 m). Noise specs barely
    matter; range specs are everything.
+
+## 8. The fix: coverage-search fallback, implemented and measured
+
+Recommendation 1 is now part of the navigator
+([`navigator.py`](../pyroscout/navigator.py), `coverage_search=True` by
+default). When frontiers are exhausted and the victim was never seen,
+`SEARCHING` switches from frontier exploration to sweeping the thermal
+sensor over the mapped building:
+
+- **Sweep credit is honest.** A coverage cell only counts as swept if a
+  victim at its centre would actually have been detected from some pose the
+  robot has occupied: within sensor range, inside the forward FOV, with line
+  of sight *on the believed map* (unknown space never grants sight). No
+  false "I checked there".
+- **Waypoints are the nearest unswept free cells**, with a full in-place
+  periscope spin on arrival (skipped when the drive-by cone already swept
+  the surroundings) so the forward-only sensor eventually faces everywhere.
+- **Progress is guaranteed.** A waypoint is retired after its spin even if
+  its centre never became visible (corner shadows), so the search cannot
+  livelock; `FAILED` now *means* "all reachable free space swept, no
+  detection" instead of "ran out of frontier ideas".
+
+Measured before/after on the thermal cliff (20 seeds per cell):
+
+| Thermal range | @ 70 s: off → on | @ 210 s: off → on | Hard-stuck @ 210 s: off → on |
+|---|---|---|---|
+| 3 m | 0% → **25%** | 0% → **100%** | 20/20 → **0/20** |
+| 4 m | 5% → **35%** | 5% → **100%** | 19/20 → **0/20** |
+| 6 m | 80% → 80% | 100% → 100% | 0/20 → 0/20 |
+
+Reading of the residuals:
+
+- **Every hard failure became a soft one.** At 210 s nothing is stuck and
+  everything is found; the remaining sub-100% cells at 70 s are pure budget
+  limits — a coverage sweep of a ~180 m² building with a 3–4 m sensor takes
+  a median 78–82 s of rescue time (vs ~45 s when the sensor reaches 6 m),
+  so the operational budget must scale with area ÷ sensor range.
+- **A small safety regression appears during sweeps**: 4/20 episodes at
+  3–4 m log 1–2 grazing wall-contact steps (max 2; baseline remains 0 in
+  100/100). Sweep waypoints hug walls more than frontier targets do, and
+  pure pursuit can clip corners on tight turns. A clearance-gated speed or
+  a stricter arrival tolerance near walls is the follow-up (see
+  recommendation 3).
+- **Nothing else moved.** Baseline, LIDAR sweeps, and random-victim arms
+  are step-identical with the fallback enabled — it only engages when
+  frontier search has already failed.
+
+Regression tests pin the behaviour
+([`test_coverage_search.py`](../tests/test_coverage_search.py)): a 3 m-sensor
+rescue end-to-end, the documented failure with the fallback disabled, and a
+unit test that sweep marking never credits cells behind walls or outside the
+field of view.
 
 ## Limitations
 
