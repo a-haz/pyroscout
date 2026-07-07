@@ -74,6 +74,7 @@ class EpisodeConfig:
     intensity_noise: float = 0.05
     thermal_range: float = 30.0
     random_victim: bool = False
+    coverage_search: bool = True
     max_steps: int = MAX_STEPS
 
 
@@ -157,6 +158,7 @@ def run_episode(cfg: EpisodeConfig) -> dict:
         robot, world, lidar, thermal,
         grid=OccupancyGrid(world.width, world.height, resolution=0.1),
         controller=controller, dt=DT, reach_radius=0.5, replan_every=5, safety_margin=0.2,
+        coverage_search=cfg.coverage_search,
     )
 
     t0 = time.perf_counter()
@@ -260,6 +262,20 @@ def build_tasks(quick: bool) -> list[EpisodeConfig]:
                     EpisodeConfig(
                         "budget", param, float(value), s,
                         max_steps=3 * MAX_STEPS, **override,
+                    )
+                )
+
+    # Coverage-search fallback validation: the short-thermal cliff with the
+    # fallback disabled (the pre-fix behaviour), at both step budgets, so the
+    # sweep/budget arms above (fallback on) have a like-for-like "before".
+    for value in (3.0, 4.0, 6.0):
+        for budget_mult in (1, 3):
+            for s in range(n_sweep):
+                tasks.append(
+                    EpisodeConfig(
+                        "fallback_off", f"thermal_range_{budget_mult}x", value, s,
+                        thermal_range=value, coverage_search=False,
+                        max_steps=budget_mult * MAX_STEPS,
                     )
                 )
 
@@ -398,6 +414,24 @@ def summarize(rows: list[dict]) -> str:
                     f"  {param}={value:g}: {s_ok:5.1f}% -> {b_ok:5.1f}%   "
                     f"(hard-stuck at 3x: {hard}/{len(brows)})"
                 )
+
+    fb = _filter(rows, kind="fallback_off")
+    if fb:
+
+        def rate(rs):
+            return 100 * sum(r["success"] for r in rs) / len(rs) if rs else math.nan
+
+        emit()
+        emit("=== Coverage-search fallback: thermal cliff, success off -> on ===")
+        for value in sorted({r["value"] for r in fb}):
+            off1 = [r for r in fb if r["value"] == value and r["param"] == "thermal_range_1x"]
+            off3 = [r for r in fb if r["value"] == value and r["param"] == "thermal_range_3x"]
+            on1 = _filter(rows, kind="sweep", param="thermal_range", value=value)
+            on3 = _filter(rows, kind="budget", param="thermal_range", value=value)
+            emit(
+                f"  thermal_range={value:g}: @70s {rate(off1):5.1f}% -> {rate(on1):5.1f}%   "
+                f"@210s {rate(off3):5.1f}% -> {rate(on3):5.1f}%"
+            )
 
     rand = _filter(rows, kind="random_victim")
     if rand:

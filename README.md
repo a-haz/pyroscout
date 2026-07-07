@@ -165,7 +165,8 @@ stateDiagram-v2
   SEARCHING --> NAVIGATING: thermal detection
   NAVIGATING --> SEARCHING: path blocked, map around the wall
   NAVIGATING --> REACHED: at victim
-  SEARCHING --> FAILED: no frontiers left
+  SEARCHING --> SEARCHING: frontiers gone → coverage sweep
+  SEARCHING --> FAILED: all free space swept, no detection
   REACHED --> [*]
 ```
 
@@ -174,6 +175,12 @@ stateDiagram-v2
   clustered (ignore speckle), and selection trades off proximity against cluster
   size (a doorway into a new room beats a leftover pocket), with commitment and
   visited-memory to avoid oscillating.
+- If the map is complete but the victim was never seen (a short-range or badly
+  occluded thermal sensor), SEARCHING falls back to **coverage search**: sweep
+  the sensor over every reachable free cell it hasn't *provably* covered
+  (forward FOV + line of sight on the believed map), spinning in place at each
+  waypoint so the forward-facing sensor eventually looks everywhere a victim
+  could hide. Only when all reachable space is swept does it declare FAILED.
 - The moment thermal gets line of sight, it switches to **NAVIGATING**: plan to
   the fused victim estimate and follow it, replanning as the map grows. If the
   victim isn't reachable yet, it explores *toward* it — mapping around the wall.
