@@ -34,7 +34,7 @@ dependencies = ["numpy>=1.24", "matplotlib>=3.7", "pillow>=9.0"]
 dev = ["pytest>=7", "ruff>=0.4"]
 
 [project.urls]
-Repository = "https://github.com/a-haz/project-00"
+Repository = "https://github.com/a-haz/pyroscout"
 
 [tool.setuptools.packages.find]
 include = ["pyroscout*"]
@@ -42,8 +42,8 @@ include = ["pyroscout*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-# The write-up notebook is narrative prose with notebook idioms (cell-level
-# imports, output-suppressing semicolons) that source-code lint rules reject.
+# Notebooks under notebooks/ are narrative write-ups, not shippable code;
+# don't lint them with the library's style rules.
 extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]

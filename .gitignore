@@ -24,8 +24,4 @@ htmlcov/
 .idea/
 .vscode/
 
-# Jupyter
-.ipynb_checkpoints/
-notebooks/*.html
-
 # Note: assets/*.gif and assets/*.png are intentionally committed (README demos).
