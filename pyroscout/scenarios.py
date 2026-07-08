@@ -37,8 +37,17 @@ def search_rescue_world() -> tuple[World, Pose]:
     return world, start
 
 
-def demo_navigator(seed: int = 0) -> tuple[Navigator, World, DiffDriveRobot]:
-    """Fully wired navigator for the search-and-rescue demo."""
+def demo_navigator(
+    seed: int = 0,
+    thermal_range: float = 30.0,
+    coverage_search: bool = True,
+) -> tuple[Navigator, World, DiffDriveRobot]:
+    """Fully wired navigator for the search-and-rescue demo.
+
+    ``thermal_range`` and ``coverage_search`` are exposed so tests and studies
+    can exercise the short-range-sensor regime where the coverage-search
+    fallback (rather than plain frontier exploration) has to find the victim.
+    """
     world, start = search_rescue_world()
     robot = DiffDriveRobot(
         start.x, start.y, start.theta, radius=0.25, v_max=0.8, omega_max=2.5
@@ -46,7 +55,7 @@ def demo_navigator(seed: int = 0) -> tuple[Navigator, World, DiffDriveRobot]:
     lidar = Lidar2D(num_beams=140, fov=2 * math.pi, max_range=8.0, noise_std=0.02, seed=seed)
     thermal = ThermalSensor(
         fov=math.pi,
-        max_range=30.0,
+        max_range=thermal_range,
         reference_intensity=100.0,
         intensity_noise=0.05,
         bearing_noise=0.03,
@@ -57,6 +66,6 @@ def demo_navigator(seed: int = 0) -> tuple[Navigator, World, DiffDriveRobot]:
     nav = Navigator(
         robot, world, lidar, thermal,
         grid=grid, controller=controller, dt=0.1, reach_radius=0.5,
-        replan_every=5, safety_margin=0.2,
+        replan_every=5, safety_margin=0.2, coverage_search=coverage_search,
     )
     return nav, world, robot

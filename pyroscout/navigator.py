@@ -10,7 +10,11 @@ loop and decides *what the robot should be doing* at each instant:
 3. **Decide.**
    * ``SEARCHING`` — the victim has not been seen yet, so drive towards the
      nearest reachable *frontier* (free space bordering the unknown) to expand
-     the map.
+     the map.  If the map is complete and the victim was still never seen (a
+     short-range or badly occluded thermal sensor), fall back to *coverage
+     search*: sweep the sensor over all reachable free space, spinning in
+     place at each waypoint so the forward-facing sensor eventually looks
+     everywhere a victim could hide.
    * ``NAVIGATING`` — the victim has been seen, so plan an A* path to the
      estimate and follow it; if walls still block the route, keep exploring in
      the victim's direction until one opens up.
@@ -28,8 +32,9 @@ from enum import Enum
 import numpy as np
 
 from .control import PurePursuit
-from .geometry import Pose
+from .geometry import Pose, wrap_to_pi
 from .mapping import OccupancyGrid
+from .mapping.occupancy_grid import bresenham
 from .planning import astar
 from .robot import DiffDriveRobot
 from .sensors import Lidar2D, ThermalSensor
@@ -106,6 +111,8 @@ class Navigator:
         goal_filter_alpha: float = 0.3,
         comfort: float = 0.7,
         clearance_weight: float = 5.0,
+        coverage_search: bool = True,
+        coverage_res: float = 0.5,
     ):
         self.robot = robot
         self.world = world
@@ -122,6 +129,12 @@ class Navigator:
         self.goal_filter_alpha = float(goal_filter_alpha)
         self.comfort = float(comfort)
         self.clearance_weight = float(clearance_weight)
+        self.coverage_search = bool(coverage_search)
+        self._cov_res = float(coverage_res)
+        # How far a coverage sweep trusts the thermal sensor: slightly inside
+        # its true range, and capped so the per-step bookkeeping stays cheap
+        # when the range is large (that regime never needs coverage search).
+        self.sweep_radius = max(0.8, min(3.0, 0.9 * self.thermal.max_range))
 
         self.state = NavState.SEARCHING
         self.victim_seen = False
@@ -131,6 +144,10 @@ class Navigator:
         self._steps_since_plan = 0
         self._stuck_counter = 0
         self._visited_targets: list[np.ndarray] = []
+        self._swept: set[tuple[int, int]] = set()
+        self._coverage_target: np.ndarray | None = None
+        self._periscope_remaining = 0.0
+        self._spin_bin: tuple[int, int] | None = None
 
     # --- fusion ---------------------------------------------------------------
     def _update_goal_estimate(self, detections: list[ThermalDetection]) -> None:
@@ -248,6 +265,151 @@ class Navigator:
             self.explore_target = None
         self.current_path = path
 
+    # --- coverage search (frontier-exhausted fallback) ------------------------
+    def _bin_of(self, x: float, y: float) -> tuple[int, int]:
+        return int(x // self._cov_res), int(y // self._cov_res)
+
+    def _cell_visible(self, rx: int, ry: int, gx: int, gy: int) -> bool:
+        """Line of sight between two *grid* cells on the believed map.
+
+        Unknown cells block sight: the sensor cannot vouch for space the map
+        has never observed, so it is not credited with covering it.
+        """
+        prob = self.grid.prob
+        known = self.grid.known_mask
+        for px, py in bresenham(rx, ry, gx, gy):
+            if not self.grid.in_bounds(px, py):
+                return False
+            if not known[py, px] or prob[py, px] > 0.65:
+                return False
+        return True
+
+    def _mark_swept(self) -> None:
+        """Credit the coverage cells the thermal sensor genuinely covered.
+
+        A coverage cell is marked swept only if a victim at its centre would
+        have produced a detection from the current pose: within
+        ``sweep_radius``, inside the forward field of view, and with line of
+        sight on the believed map.  Cells whose centre the map shows as
+        occupied are vacuously swept — a victim cannot be inside a wall.
+        """
+        pose = self.robot.pose
+        r = self.sweep_radius
+        res = self._cov_res
+        half_fov = self.thermal.fov / 2.0
+        rx, ry = self.grid.world_to_grid(pose.x, pose.y)
+        prob = self.grid.prob
+        known = self.grid.known_mask
+
+        for bx in range(int((pose.x - r) // res), int((pose.x + r) // res) + 1):
+            for by in range(int((pose.y - r) // res), int((pose.y + r) // res) + 1):
+                if (bx, by) in self._swept:
+                    continue
+                wx, wy = (bx + 0.5) * res, (by + 0.5) * res
+                dx, dy = wx - pose.x, wy - pose.y
+                if dx * dx + dy * dy > r * r:
+                    continue
+                gx, gy = self.grid.world_to_grid(wx, wy)
+                if not self.grid.in_bounds(gx, gy):
+                    continue
+                if known[gy, gx] and prob[gy, gx] > 0.65:
+                    self._swept.add((bx, by))
+                    continue
+                rel = wrap_to_pi(math.atan2(dy, dx) - pose.theta).item()
+                if abs(rel) > half_fov:
+                    continue
+                if self._cell_visible(rx, ry, gx, gy):
+                    self._swept.add((bx, by))
+
+    def _unswept_nearby(self) -> bool:
+        """Is any known-free coverage cell within sweep radius still unswept?"""
+        pose = self.robot.pose
+        r = self.sweep_radius
+        res = self._cov_res
+        prob = self.grid.prob
+        known = self.grid.known_mask
+        for bx in range(int((pose.x - r) // res), int((pose.x + r) // res) + 1):
+            for by in range(int((pose.y - r) // res), int((pose.y + r) // res) + 1):
+                if (bx, by) in self._swept:
+                    continue
+                wx, wy = (bx + 0.5) * res, (by + 0.5) * res
+                if (wx - pose.x) ** 2 + (wy - pose.y) ** 2 > r * r:
+                    continue
+                gx, gy = self.grid.world_to_grid(wx, wy)
+                if self.grid.in_bounds(gx, gy) and known[gy, gx] and prob[gy, gx] < 0.35:
+                    return True
+        return False
+
+    def _choose_coverage_target(self) -> np.ndarray | None:
+        """Nearest reachable known-free spot the thermal sensor has not swept.
+
+        Bins observed free space into ``coverage_res`` cells and returns the
+        closest one not yet swept, so the robot lawn-mows the (short-range,
+        forward-facing) sensor over the whole building instead of giving up the
+        moment frontiers run out.
+        """
+        free = self.grid.known_mask & (self.grid.prob < 0.35)
+        ys, xs = np.nonzero(free)
+        if xs.size == 0:
+            return None
+        res = self._cov_res
+        wx = (xs + 0.5) * self.grid.resolution
+        wy = (ys + 0.5) * self.grid.resolution
+        keys = np.stack([np.floor(wx / res), np.floor(wy / res)], axis=1).astype(int)
+        uncovered = [tuple(b) for b in np.unique(keys, axis=0) if tuple(b) not in self._swept]
+        if not uncovered:
+            return None
+        rx, ry = self.robot.pose.xy
+        centers = np.array([[(cx + 0.5) * res, (cy + 0.5) * res] for cx, cy in uncovered])
+        order = np.argsort(np.hypot(centers[:, 0] - rx, centers[:, 1] - ry))
+        for idx in order[:40]:
+            cand = centers[idx]
+            if self._plan_to(cand) is not None:
+                return cand
+        return None
+
+    def _plan_coverage(self) -> None:
+        """Sweep the thermal sensor over all reachable free space.
+
+        Waypoints are unswept coverage cells.  On arrival the robot performs a
+        full in-place "periscope" spin (skipped when everything nearby is
+        already swept) so the forward-only sensor faces every direction, then
+        the waypoint is retired even if its centre never became visible
+        (corner shadows) — guaranteeing the search always makes progress.
+        """
+        if self._periscope_remaining > 1e-3:
+            self.current_path = None  # hold position while the spin finishes
+            return
+        if self._spin_bin is not None:
+            # Spin finished: retire the waypoint no matter what it revealed.
+            self._swept.add(self._spin_bin)
+            self._spin_bin = None
+
+        pose_xy = self.robot.pose.xy
+        if (
+            self._coverage_target is not None
+            and np.hypot(*(self._coverage_target - pose_xy)) < 0.6
+        ):
+            # Arrived: sweep here if anything nearby still needs covering.
+            self._spin_bin = self._bin_of(*self._coverage_target)
+            if self._unswept_nearby():
+                self._periscope_remaining = 2.0 * math.pi
+            self._coverage_target = None
+            self.current_path = None
+            return
+        if (
+            self._coverage_target is None
+            or self._bin_of(*self._coverage_target) in self._swept
+        ):
+            # No target, or the drive-by cone already swept it: pick a new one.
+            self._coverage_target = self._choose_coverage_target()
+        if self._coverage_target is None:
+            self.current_path = None  # everything reachable swept -> give up
+            return
+        self.current_path = self._plan_to(self._coverage_target)
+        if self.current_path is None:
+            self._coverage_target = None
+
     # --- main loop ------------------------------------------------------------
     def step(self) -> StepRecord:
         pose = self.robot.pose
@@ -257,6 +419,8 @@ class Navigator:
         self.grid.update(scan)
         detections = self.thermal.sense(pose, self.world)
         self._update_goal_estimate(detections)
+        if self.coverage_search:
+            self._mark_swept()
 
         # 2. Terminal check: have we arrived at the victim estimate?
         if self.victim_seen and self.goal_estimate is not None:
@@ -273,7 +437,14 @@ class Navigator:
             self._replan()
 
         # 4. Act.
-        if self.current_path is None or len(self.current_path) == 0:
+        if self._periscope_remaining > 1e-3 and not self.victim_seen:
+            # Bounded in-place sweep so the forward-only thermal FOV eventually
+            # faces every direction at this coverage waypoint.
+            self._stuck_counter = 0
+            spin = min(self.robot.omega_max, self._periscope_remaining / self.dt)
+            self.robot.step(0.0, spin, self.dt)
+            self._periscope_remaining -= spin * self.dt
+        elif self.current_path is None or len(self.current_path) == 0:
             # Nothing to follow: rotate in place to gather information.
             self._stuck_counter += 1
             if self._stuck_counter > 80:
@@ -304,6 +475,10 @@ class Navigator:
         else:
             self.state = NavState.SEARCHING
             self._plan_exploration()
+            if self.current_path is None and self.coverage_search:
+                # Frontiers exhausted but victim never seen: sweep free space
+                # rather than spinning in place until the stuck-timer fails.
+                self._plan_coverage()
 
     def _apply_safety(self, scan, v: float, omega: float) -> tuple[float, float]:
         """Reactive brake: don't drive forward into something very close ahead."""

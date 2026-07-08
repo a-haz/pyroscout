@@ -46,11 +46,20 @@ room and the victim is two offset doorways away, out of thermal line-of-sight.
 | Wall collisions | **0** |
 | Victim localisation error (thermal+LIDAR fusion) | **1.2 cm** |
 | Distance travelled | 25.1 m |
-| Map coverage at finish | ~60% of the building |
+| Map coverage at finish | ~100% of the building |
 
-Across 8 random sensor-noise seeds: **8/8 success, 0 collisions**, victim
-localised to within a few centimetres every time. (Reproduce with
-`pytest -q`, which includes an end-to-end integration test.)
+Across a **100-seed Monte-Carlo**: 99% success, **0 collisions in every
+episode**, median time-to-rescue 42.5 s, victim localised to a median
+**1.5 cm**. The full quantitative study — sensor-degradation sweeps, failure
+anatomy, and 60 randomized victim placements (60/60 reached) — lives in
+[`analysis/ANALYSIS.md`](analysis/ANALYSIS.md); reproduce it with
+`python analysis/run_analysis.py`.
+
+The study also found (and fixed) a real capability gap: with a short-range
+(≤ 4 m) thermal sensor the robot used to map the whole building, never get a
+detection, and give up — 0–5% success no matter how much time it was given.
+The **coverage-search fallback** born from that finding lifts those cells to
+**100%** at a 210 s budget (see §8 of the analysis).
 
 ---
 
@@ -162,7 +171,8 @@ stateDiagram-v2
   SEARCHING --> NAVIGATING: thermal detection
   NAVIGATING --> SEARCHING: path blocked, map around the wall
   NAVIGATING --> REACHED: at victim
-  SEARCHING --> FAILED: no frontiers left
+  SEARCHING --> SEARCHING: frontiers gone → coverage sweep
+  SEARCHING --> FAILED: all free space swept, no detection
   REACHED --> [*]
 ```
 
@@ -171,6 +181,12 @@ stateDiagram-v2
   clustered (ignore speckle), and selection trades off proximity against cluster
   size (a doorway into a new room beats a leftover pocket), with commitment and
   visited-memory to avoid oscillating.
+- If the map is complete but the victim was never seen (a short-range or badly
+  occluded thermal sensor), SEARCHING falls back to **coverage search**: sweep
+  the sensor over every reachable free cell it hasn't *provably* covered
+  (forward FOV + line of sight on the believed map), spinning in place at each
+  waypoint so the forward-facing sensor eventually looks everywhere a victim
+  could hide. Only when all reachable space is swept does it declare FAILED.
 - The moment thermal gets line of sight, it switches to **NAVIGATING**: plan to
   the fused victim estimate and follow it, replanning as the map grows. If the
   victim isn't reachable yet, it explores *toward* it — mapping around the wall.
