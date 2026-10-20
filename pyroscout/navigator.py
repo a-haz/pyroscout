@@ -1,13 +1,12 @@
-"""The autonomy brain: sensor fusion + a behaviour state machine.
+"""Sensor fusion and the behaviour state machine.
 
-This module wires every other layer together into a closed perception-plan-act
-loop and decides *what the robot should be doing* at each instant:
+This module ties the other layers into a sense-plan-act loop. Each step:
 
-1. **Sense.**  Take a LIDAR scan (update the map) and a thermal reading.
-2. **Fuse.**  LIDAR gives the *map*; the thermal sensor gives the *goal*.  A
+1. Sense: take a LIDAR scan (update the map) and a thermal reading.
+2. Fuse: LIDAR gives the map and the thermal sensor gives the goal. A
    thermal detection is projected into the world and smoothed over time into a
    victim-position estimate.
-3. **Decide.**
+3. Decide:
    * ``SEARCHING``: the victim has not been seen yet, so drive towards the
      nearest reachable *frontier* (free space bordering the unknown) to expand
      the map.
@@ -15,7 +14,7 @@ loop and decides *what the robot should be doing* at each instant:
      estimate and follow it; if walls still block the route, keep exploring in
      the victim's direction until one opens up.
    * ``REACHED`` / ``FAILED``: terminal states.
-4. **Act.**  Convert the active path into velocity commands with pure pursuit,
+4. Act: convert the active path into velocity commands with pure pursuit,
    with a reactive safety brake as a backstop.
 """
 

@@ -1,12 +1,8 @@
 """The simulated environment: walls, obstacles and heat sources.
 
-Obstacles are modelled as axis-aligned rectangles.  This is deliberately simple
-but buys us two things cheaply:
-
-* **Ray casting**: every rectangle contributes four line segments that the
-  LIDAR can bounce off.
-* **Collision checking**: a point-in-(inflated)-rectangle test tells us whether
-  the robot body has clipped a wall.
+Obstacles are axis-aligned rectangles. Each one gives four line segments for
+LIDAR ray casting, and a point-in-inflated-rectangle test is enough to tell
+whether the robot body has hit a wall.
 """
 
 from __future__ import annotations

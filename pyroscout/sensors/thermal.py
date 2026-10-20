@@ -17,12 +17,9 @@ estimate::
 
     d_est = sqrt(I0 / measured - 1)
 
-Two effects make this realistic, and make the navigation problem non-trivial:
-
-* **Occlusion**: walls block infrared, so a source is only detected when the
-  sensor has line of sight to it (checked with a LIDAR-style ray cast).
-* **Noise**: both the intensity and the bearing readings are corrupted, so the
-  resulting position estimate drifts and must be filtered over time.
+Walls block infrared, so a source is only detected with line of sight
+(checked with a LIDAR-style ray cast). Intensity and bearing are both noisy,
+so the position estimate drifts and is filtered over time.
 """
 
 from __future__ import annotations
