@@ -49,7 +49,7 @@ def astar(
         Permit 8-connected moves.  Diagonal moves that would cut a wall corner
         are forbidden.
     cost_grid : np.ndarray | None, shape (ny, nx)
-        Optional non-negative extra cost added for *entering* each cell — e.g. a
+        Optional non-negative extra cost added for *entering* each cell, e.g. a
         clearance penalty that biases the path away from walls.  Because the
         added cost is non-negative, the Euclidean heuristic stays admissible.
 

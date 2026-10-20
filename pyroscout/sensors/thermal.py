@@ -1,7 +1,7 @@
 """A simulated thermal sensor.
 
 This is the "semantic" sensor: where LIDAR reports *geometry* (distances to
-surfaces), the thermal sensor reports *what matters* — the direction of, and a
+surfaces), the thermal sensor reports *what matters*: the direction of, and a
 rough distance to, any heat source it can see.
 
 Physical model
@@ -17,11 +17,11 @@ estimate::
 
     d_est = sqrt(I0 / measured - 1)
 
-Two effects make this realistic — and make the navigation problem non-trivial:
+Two effects make this realistic, and make the navigation problem non-trivial:
 
-* **Occlusion** — walls block infrared, so a source is only detected when the
+* **Occlusion**: walls block infrared, so a source is only detected when the
   sensor has line of sight to it (checked with a LIDAR-style ray cast).
-* **Noise** — both the intensity and the bearing readings are corrupted, so the
+* **Noise**: both the intensity and the bearing readings are corrupted, so the
   resulting position estimate drifts and must be filtered over time.
 """
 
@@ -148,7 +148,7 @@ class ThermalSensor:
     def field_at(self, xs: np.ndarray, ys: np.ndarray, world: World) -> np.ndarray:
         """Vectorised thermal field over a grid (for visualisation only).
 
-        Ignores occlusion — this is eye-candy for the ground-truth panel, not a
+        Ignores occlusion: this is eye-candy for the ground-truth panel, not a
         sensor reading.
         """
         field = np.zeros(np.broadcast(xs, ys).shape, dtype=float)

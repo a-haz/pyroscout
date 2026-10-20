@@ -3,7 +3,7 @@
 ``search_rescue_world`` lays out a small three-room "building": the robot starts
 in the left room, the victim (heat source) is in the right room, and the two
 interior walls have *offset* doorways so the robot has to wind through the middle
-room — and cannot see the victim's heat until it rounds the corners.
+room and cannot see the victim's heat until it rounds the corners.
 """
 
 from __future__ import annotations

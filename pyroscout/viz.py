@@ -5,8 +5,8 @@ headless (CI, servers, this container) and writes GIF/PNG files directly.
 
 The left panel shows the true world the robot can never fully see; the right
 panel shows the occupancy grid it has inferred from LIDAR.  Watching the right
-panel fill in — and the planned path snake through it towards the heat estimate
-— is the whole story of the project in one image.
+panel fill in (and the planned path snake through it towards the heat estimate)
+is the whole story of the project in one image.
 """
 
 from __future__ import annotations
@@ -171,7 +171,7 @@ def animate(
         _draw_truth(axL, world, rec, robot_radius)
         _draw_belief(axR, world, rec, robot_radius)
         fig.suptitle(
-            f"PyroScout — {rec.state.value.upper()}   "
+            f"PyroScout: {rec.state.value.upper()}   "
             f"t = {frame_i * 0.1:4.1f}s   step {frame_i + 1}/{result.steps}",
             fontsize=12, fontweight="bold",
         )
@@ -197,7 +197,7 @@ def save_snapshot(
     _draw_belief(axR, world, rec, robot_radius)
     outcome = "REACHED" if result.success else result.state.value.upper()
     fig.suptitle(
-        f"PyroScout — victim {outcome} in {result.sim_time:.1f}s, "
+        f"PyroScout: victim {outcome} in {result.sim_time:.1f}s, "
         f"{result.path_length:.1f} m travelled, {result.collisions} collisions",
         fontsize=12, fontweight="bold",
     )

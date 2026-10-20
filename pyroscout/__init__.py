@@ -1,4 +1,4 @@
-"""PyroScout — Thermal-LIDAR fusion for autonomous search-and-rescue navigation.
+"""PyroScout: Thermal-LIDAR fusion for autonomous search-and-rescue navigation.
 
 A compact, dependency-light 2D robotics simulator that demonstrates the full
 mobile-robot autonomy stack:

@@ -8,13 +8,13 @@ loop and decides *what the robot should be doing* at each instant:
    thermal detection is projected into the world and smoothed over time into a
    victim-position estimate.
 3. **Decide.**
-   * ``SEARCHING`` — the victim has not been seen yet, so drive towards the
+   * ``SEARCHING``: the victim has not been seen yet, so drive towards the
      nearest reachable *frontier* (free space bordering the unknown) to expand
      the map.
-   * ``NAVIGATING`` — the victim has been seen, so plan an A* path to the
+   * ``NAVIGATING``: the victim has been seen, so plan an A* path to the
      estimate and follow it; if walls still block the route, keep exploring in
      the victim's direction until one opens up.
-   * ``REACHED`` / ``FAILED`` — terminal states.
+   * ``REACHED`` / ``FAILED``: terminal states.
 4. **Act.**  Convert the active path into velocity commands with pure pursuit,
    with a reactive safety brake as a backstop.
 """
@@ -166,7 +166,7 @@ class Navigator:
         Frontier *cells* are noisy and numerous; binning them into ~0.6 m cells
         and taking centroids yields a few stable, meaningful targets and throws
         away single-cell speckle.  The cluster *size* (cell count) is a proxy
-        for how much new space lies beyond it — a whole doorway into an unmapped
+        for how much new space lies beyond it: a whole doorway into an unmapped
         room is a big cluster, a leftover pocket is a small one.
         """
         frontiers = self.grid.find_frontiers()

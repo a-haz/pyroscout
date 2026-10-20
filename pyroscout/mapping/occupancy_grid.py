@@ -11,10 +11,10 @@ beam *lands in* gets an "occupied" increment.  Starting from ``l = 0``
 
 On top of the raw map we provide two planning-oriented views:
 
-* :meth:`costmap` — a boolean "is this cell blocked?" grid, with obstacles
+* :meth:`costmap`: a boolean "is this cell blocked?" grid, with obstacles
   *inflated* by the robot radius so a point-robot planner produces body-safe
   paths.
-* :meth:`find_frontiers` — free cells that border still-unknown space, the
+* :meth:`find_frontiers`: free cells that border still-unknown space, the
   classic target set for autonomous exploration.
 """
 
@@ -144,7 +144,7 @@ class OccupancyGrid:
 
         Computed with an iterative Chamfer distance transform, capped at
         ``max_cells`` because the planner only cares about clearance up to a
-        small "comfort" radius — beyond that, all cells are equally comfortable.
+        small "comfort" radius. Beyond that, all cells are equally comfortable.
         A* uses this to prefer routes through the *middle* of corridors and
         doorways instead of scraping the corners.
         """
@@ -188,7 +188,7 @@ class OccupancyGrid:
     def find_frontiers(
         self, free_threshold: float = 0.35
     ) -> list[tuple[int, int]]:
-        """Free cells that touch unknown space — targets for exploration."""
+        """Free cells that touch unknown space: targets for exploration."""
         prob = self.prob
         known = self.known_mask
         free = known & (prob < free_threshold)

@@ -3,9 +3,9 @@
 Obstacles are modelled as axis-aligned rectangles.  This is deliberately simple
 but buys us two things cheaply:
 
-* **Ray casting** — every rectangle contributes four line segments that the
+* **Ray casting**: every rectangle contributes four line segments that the
   LIDAR can bounce off.
-* **Collision checking** — a point-in-(inflated)-rectangle test tells us whether
+* **Collision checking**: a point-in-(inflated)-rectangle test tells us whether
   the robot body has clipped a wall.
 """
 
