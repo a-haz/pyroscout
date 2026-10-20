@@ -16,6 +16,12 @@ def test_wrap_to_pi_array():
     assert np.allclose(out, [0.0, -math.pi / 2, math.pi / 2])
 
 
+def test_wrap_to_pi_boundary_maps_to_minus_pi():
+    # The interval is [-pi, pi): +pi wraps to -pi, -pi stays put.
+    assert float(wrap_to_pi(math.pi)) == -math.pi
+    assert float(wrap_to_pi(-math.pi)) == -math.pi
+
+
 def test_cast_rays_hits_segment_straight_ahead():
     p1 = np.array([[5.0, -1.0]])
     p2 = np.array([[5.0, 1.0]])

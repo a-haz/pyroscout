@@ -28,7 +28,7 @@ class Pose:
 
 
 def wrap_to_pi(angle):
-    """Wrap an angle (or array of angles) to the half-open interval (-pi, pi].
+    """Wrap an angle (or array of angles) to the half-open interval [-pi, pi).
 
     Heading errors must be wrapped before they are fed to a controller,
     otherwise a robot pointing at -179 deg and wanting +179 deg would think it
