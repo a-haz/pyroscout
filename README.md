@@ -1,7 +1,6 @@
 # PyroScout: thermal and LIDAR fusion for search-and-rescue
 
 [![CI](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml/badge.svg)](https://github.com/a-haz/pyroscout/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 PyroScout is a small 2D robotics simulator written from scratch in Python
 (NumPy and Matplotlib). A differential-drive robot starts in a building it has
@@ -86,7 +85,7 @@ python examples/run_search_rescue.py            # options: --seed 3, --no-gif
 python examples/demo_lidar.py
 python examples/demo_planning.py
 
-# tests (41 tests, including one full run) and lint
+# tests (including one full run) and lint
 pytest -q
 ruff check .
 ```
